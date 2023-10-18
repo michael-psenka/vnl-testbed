@@ -27,6 +27,8 @@ class CLIPModel(VisionLanguageModel):
         return self.model.encode_image(image)
 
     def text2feature(self, text) -> Tensor:
+        if isinstance(text, str):
+            text = clip.tokenize(text).to("cuda")
         return self.model.encode_text(text)
 
     def alignment(self, image: Tensor, text: Tensor) -> float:
