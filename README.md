@@ -1,6 +1,6 @@
-# Vision+Language Testbed
+# Vision 'n Language Testbed
 
-Welcome to the Vision+Language Testbed repository. This is a playground and evaluation framework for various vision and language models, focused on controllable, synthetic datasets for more rigorous academic analysis. Dive into our curated test environment and explore the frontiers of cross-modal AI capabilities.
+Welcome to the Vision and Language Testbed repository. This is a playground and evaluation framework for various vision and language models, focused on controllable, synthetic datasets for more rigorous academic analysis. Dive into our curated test environment and explore the frontiers of cross-modal AI capabilities.
 
 ## Key Features 🌟
 - **Unified Interface**: Every model adopts a unified structure for easy evaluation.
