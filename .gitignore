@@ -1,5 +1,8 @@
 # VS code
 .vscode
+# datasets
+.data
+data/MNIST
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
