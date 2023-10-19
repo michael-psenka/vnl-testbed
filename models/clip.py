@@ -36,6 +36,7 @@ class CLIPModel(VisionLanguageModel):
             text = clip.tokenize(text).to("cuda")
         image_features = self.model.encode_image(image)
         text_features = self.model.encode_text(text)
+        
         # Compute the similarity (dot product)
         alignment_score = torch.nn.functional.cosine_similarity(image_features, text_features, dim=-1)
         
