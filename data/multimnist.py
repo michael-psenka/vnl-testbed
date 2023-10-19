@@ -80,6 +80,18 @@ def generate(num_samples=10000, classes_omit=[], text_omit=[]):
             text_desc += "."
             break
 
+        scale_factor = 224 / 100
+        a = int(65*scale_factor)
+        b = int(85*scale_factor)
+        c = int(15*scale_factor)
+        d = int(35*scale_factor)
+        e = int(40*scale_factor)
+        f = int(60*scale_factor)
+        center = int(random.randint(e, f))
+        lo = int(random.randint(c, d))
+        hi = int(random.randint(a, b))
+        print(hi, lo, center)
+
         # Start of main text prompt switch case
         # now, make image modification based on text description
         if template == "to the left of a *":
@@ -95,8 +107,8 @@ def generate(num_samples=10000, classes_omit=[], text_omit=[]):
                     raise Exception("A different digit could not be randomly chosen (should be practically impossible, probability 1/10^100).")
                 
             # set coordinates of the original and new image
-            image_coord = (random.randint(15, 35), random.randint(40, 60))
-            image_new_coord = (random.randint(65, 85), random.randint(40, 60))
+            image_coord = (lo, center)
+            image_new_coord = (hi, center)
 
             # remove all other positional templates from being chosen
             remaining_templates.remove("to the right of a *")
@@ -116,8 +128,8 @@ def generate(num_samples=10000, classes_omit=[], text_omit=[]):
                     raise Exception("A different digit could not be randomly chosen (should be practically impossible, probability 1/10^100).")
                 
             # set coordinates of the original and new image
-            image_coord = (random.randint(65, 85), random.randint(40, 60))
-            image_new_coord = (random.randint(15, 35), random.randint(40, 60))
+            image_coord = (hi, center)
+            image_new_coord = (lo, center)
 
             # remove all other positional templates from being chosen, including this one
             remaining_templates.remove("to the left of a *")
@@ -137,8 +149,8 @@ def generate(num_samples=10000, classes_omit=[], text_omit=[]):
                     raise Exception("A different digit could not be randomly chosen (should be practically impossible, probability 1/10^100).")
                 
             # set coordinates of the original and new image
-            image_coord = (random.randint(40, 60), random.randint(15, 35))
-            image_new_coord = (random.randint(40, 60), random.randint(65, 85))
+            image_coord = (center, lo)
+            image_new_coord = (center, hi)
 
             # remove all other positional templates from being chosen, including this one
             remaining_templates.remove("to the left of a *")
@@ -158,8 +170,8 @@ def generate(num_samples=10000, classes_omit=[], text_omit=[]):
                     raise Exception("A different digit could not be randomly chosen (should be practically impossible, probability 1/10^100).")
                 
             # set coordinates of the original and new image
-            image_coord = (random.randint(40, 60), random.randint(65, 85))
-            image_new_coord = (random.randint(40, 60), random.randint(15, 35))
+            image_coord = (center, hi)
+            image_new_coord = (center, lo)
 
             # remove all other positional templates from being chosen, including this one
             remaining_templates.remove("to the left of a *")
@@ -187,7 +199,7 @@ def generate(num_samples=10000, classes_omit=[], text_omit=[]):
 
     # FINAL PROCESSING: placing sub-images into the main image
     # create a black color (100,100) image in pytorch format
-    image_final = torch.zeros(1, 3, 100, 100)
+    image_final = torch.zeros(1, 3, 224, 224)
 
     # add the original image into image_final such that its center is at image_coord
     # NOTE: coordinates are given in (x, y), which we need to convert to (row, col)
