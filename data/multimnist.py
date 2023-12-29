@@ -4,6 +4,8 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 
+import jax.numpy as jnp
+
 # important lines
 # *---------------------------------------------------------*
 
@@ -21,7 +23,7 @@ import torchvision.transforms as transforms
 
 # returns a tensor of shape (num_samples, 3, 100, 100) containing the images, and a
 # list of strings of size num_samples containing the text descriptions
-def generate(num_samples=10000, classes_omit=[], text_omit=[]):
+def generate(num_samples=10000,export_jax=False, classes_omit=[], text_omit=[]):
 
     # text takes the form of a base image followed by a sequence of modifications:
     # "a [base_iamge], [mod_1], [mod_2], ..., [mod_n]."
@@ -195,6 +197,12 @@ def generate(num_samples=10000, classes_omit=[], text_omit=[]):
     # if image_new is defined, add it to image_final such that its center is at image_new_coord
     if image_new != None:
         image_final[0, :, image_new_coord[1] - 14:image_new_coord[1] + 14, image_new_coord[0] - 14:image_new_coord[0] + 14] = image_new
+
+    # if exporting for JAX, comvert to jax.numpy array
+    if export_jax:
+        image_final = jnp.array(image_final.numpy())
+        # switch dimensions to (N, H, W, C)
+        image_final = jnp.transpose(image_final, (0, 2, 3, 1))
 
     # finally, return image_final and text_desc
     return image_final, text_desc
