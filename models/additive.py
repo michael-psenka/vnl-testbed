@@ -24,8 +24,9 @@ class AdditiveAutoencoder(nn.Module):
         return self.encoder(x)
 
     def decode(self, z):
-        split_points = jnp.cumsum(self.block_sizes[:-1])  # Points to split the latent vector
-        z_blocks = jnp.split(z, split_points, axis=-1)
+        # construct list of points to split z at, based on block sizes
+
+        z_blocks = jnp.split(z, self.num_blocks, axis=-1)
         decoded_blocks = [decoder_block(z_block) for decoder_block, z_block in zip(self.decoder_blocks, z_blocks)]
         return jnp.sum(jnp.stack(decoded_blocks), axis=0)
 
@@ -52,13 +53,19 @@ class DecoderBlock(nn.Module):
         # Define the Deconvolutional layers
         # Note: Flax does not have a direct 'DeConv' layer, so you might need to use ConvTranspose or similar.
         # Here's an example using ConvTranspose:
+
+        batch_size = x.shape[0]
+        x = x.reshape((batch_size, 1, 1, -1))  # Reshape to 4D tensor
         x = nn.ConvTranspose(features=64, kernel_size=(4, 4), strides=(2, 2), padding='SAME')(x)
+
         x = nn.leaky_relu(x, 0.01)
         x = nn.ConvTranspose(features=32, kernel_size=(4, 4), strides=(2, 2), padding='SAME')(x)
+        
         x = nn.leaky_relu(x, 0.01)
-        x = nn.ConvTranspose(features=32, kernel_size=(4, 4), strides=(2, 2), padding='SAME')(x)
+        x = nn.ConvTranspose(features=32, kernel_size=(4, 4), strides=(5, 5), padding='SAME')(x)
+
         x = nn.leaky_relu(x, 0.01)
-        x = nn.ConvTranspose(features=3, kernel_size=(4, 4), strides=(2, 2), padding='SAME')(x)
+        x = nn.ConvTranspose(features=3, kernel_size=(4, 4), strides=(5, 5), padding='SAME')(x)
 
         return x
 
