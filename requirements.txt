@@ -3,3 +3,7 @@ notebook
 torch==1.7.1
 torchvision
 cudatoolkit==11.0
+# m3ae
+einops
+ml_collections
+transformers

@@ -198,3 +198,45 @@ def generate(num_samples=10000, classes_omit=[], text_omit=[]):
 
     # finally, return image_final and text_desc
     return image_final, text_desc
+
+def generate_colored():
+    # load MNIST
+    transform = transforms.Compose([transforms.ToTensor()])
+    trainset = torchvision.datasets.MNIST(root='./data', train=True,
+                                            download=True, transform=transform)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=1,
+                                                shuffle=True, num_workers=2)
+    # data iterator
+    dataiter = iter(trainloader)
+
+    # sample an image and get its label
+    image, label = next(dataiter)
+    image = torch.cat((image, image, image), dim=1)
+    
+    colors = {
+        "plain": (1, 1, 1),
+        "red": (1, 0.1, 0.1),
+        "green": (0.1, 1, 0.1),
+        "blue": (0.1, 0.1, 1),
+        "yellow": (1, 1, 0.1),
+        "purple": (0.5, 0.1, 0.5),
+    }
+    
+    text_descs = []
+    images = []
+    image_coord = (50, 50)  # Update with your specific coordinates
+    
+    for color, scaling_factors in colors.items():
+        image_copy = image.clone()
+        image_copy[:, 0, :, :] = image[:, 0, :, :] * scaling_factors[0]
+        image_copy[:, 1, :, :] = image[:, 1, :, :] * scaling_factors[1]
+        image_copy[:, 2, :, :] = image[:, 2, :, :] * scaling_factors[2]
+
+        # Initialize final image tensor
+        image_final = torch.zeros(1, 3, 100, 100)
+        image_final[0, :, image_coord[1]-14:image_coord[1]+14, image_coord[0]-14:image_coord[0]+14] = image_copy
+        
+        text_descs.append(f"A {label.item()} colored {color}.")
+        images.append(image_copy)
+    
+    return images, text_descs
