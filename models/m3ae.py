@@ -12,6 +12,8 @@ import torch
 from torch import Tensor
 import transformers
 
+from parent.vl import VisionLanguageModel
+
 class CLIPModel(VisionLanguageModel):
     def __init__(self):
         super(CLIPModel, self).__init__()

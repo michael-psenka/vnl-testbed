@@ -1,10 +1,11 @@
+from typing import List
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
 from jax import random
-from typing import List
+from models.parent.autoencoder import AutoEncoder
 
-class AdditiveAutoencoder(nn.Module):
+class AdditiveAutoencoder(AutoEncoder):
     latent_dim: int
     num_blocks: int
 
