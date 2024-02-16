@@ -3,6 +3,7 @@
 # datasets
 .data
 data/MNIST
+data/MNIST-CUSTOM
 processed 
 raw
 # weights

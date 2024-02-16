@@ -1,3 +1,4 @@
+import os
 import random
 
 import torch
@@ -25,6 +26,10 @@ import jax.numpy as jnp
 # returns a tensor of shape (num_samples, 3, 64, 64) containing the images, and a
 # list of strings of size num_samples containing the text descriptions
 def generate(num_samples=10000,export_jax=False, classes_omit=[], text_omit=[]):
+    if os.path.exists("./data/MNIST-CUSTOM/train.pt"):
+        print("exists")
+        dataset = torch.load("./data/MNIST-CUSTOM/train.pt")
+        return dataset, None
 
     # text takes the form of a base image followed by a sequence of modifications:
     # "a [base_iamge], [mod_1], [mod_2], ..., [mod_n]."
@@ -215,5 +220,9 @@ def generate(num_samples=10000,export_jax=False, classes_omit=[], text_omit=[]):
         # switch dimensions to (N, H, W, C)
         images_full = jnp.transpose(images_full, (0, 2, 3, 1))
 
+    if not os.path.exists("./data/MNIST-CUSTOM/train.pt"):
+        os.mkdir("./data/MNIST-CUSTOM")
+    torch.save(images_full, "./data/MNIST-CUSTOM/train.pt")
+    
     # finally, return image_final and text_desc
     return images_full, text_desc

@@ -3,8 +3,9 @@ import jax.numpy as jnp
 import flax.linen as nn
 from jax import random
 from typing import List
+from models.parent.autoencoder import Autoencoder
 
-class SlotAttentionAutoencoder(nn.Module):
+class SlotAttentionAutoencoder(Autoencoder):
     num_slots: int
     slot_size: int
     iters: int
@@ -15,6 +16,12 @@ class SlotAttentionAutoencoder(nn.Module):
         self.encoder = EncoderCNN()
         self.slot_attention = SlotAttentionModule(self.num_slots, self.slot_size, self.iters, self.mlp_hidden_size)
         self.decoder = DecoderCNN(self.output_shape)
+
+    def encode(self, x):
+        return self.encoder(x)
+
+    def decode(self, x):
+        return self.decoder(x)
 
     def __call__(self, x):
         features = self.encoder(x)

@@ -1,4 +1,4 @@
-from .parent import VisionLanguageModel
+from parent.vl import VisionLanguageModel
 import torch
 from torch import Tensor
 import clip
