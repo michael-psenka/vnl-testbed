@@ -22,7 +22,7 @@ import jax.numpy as jnp
 # dataset will have num_samples images, omitting digits in the classes_omit list of
 # positive integers, and omitting text in the text_omit list of strings
 
-# returns a tensor of shape (num_samples, 3, 100, 100) containing the images, and a
+# returns a tensor of shape (num_samples, 3, 64, 64) containing the images, and a
 # list of strings of size num_samples containing the text descriptions
 def generate(num_samples=10000,export_jax=False, classes_omit=[], text_omit=[]):
 
@@ -39,6 +39,10 @@ def generate(num_samples=10000,export_jax=False, classes_omit=[], text_omit=[]):
         "below a *",
         "the _ colored &", # _ is the original chosen digit, & can be a color
     ]
+
+    # remove all classes and text that we want to omit
+    for text in text_omit:
+        text_templates.remove(text)
 
     # possible colors, represented as a dict with keys as color names (string) and
     # the values to multiplicitavely scale down a grayscale image
@@ -70,7 +74,7 @@ def generate(num_samples=10000,export_jax=False, classes_omit=[], text_omit=[]):
     image_new = None
 
 
-    images_full = torch.zeros(num_samples, 3, 100, 100)
+    images_full = torch.zeros(num_samples, 3, 128, 128)
 
     print('Creating MultiMNIST dataset...')
     for i in tqdm(range(num_samples)):
@@ -193,8 +197,8 @@ def generate(num_samples=10000,export_jax=False, classes_omit=[], text_omit=[]):
 
 
         # FINAL PROCESSING: placing sub-images into the main image
-        # create a black color (100,100) image in pytorch format
-        image_final = torch.zeros(3, 100, 100)
+        # create a black color (64,64) image in pytorch format
+        image_final = torch.zeros(3, 128, 128)
 
         # add the original image into image_final such that its center is at image_coord
         # NOTE: coordinates are given in (x, y), which we need to convert to (row, col)
