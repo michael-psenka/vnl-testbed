@@ -11,3 +11,4 @@ jax[cuda12_pip]
 flax
 optax
 jaxtyping
+matplotlib

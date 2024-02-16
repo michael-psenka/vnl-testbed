@@ -17,8 +17,6 @@ import matplotlib.pyplot as plt
 def mse_loss(params: Dict[str, float], model: Autoencoder, batch: R_bxdxdxc):
     # when declaring mutable, model.apply returns tuple, with first element
     # being actual model output
-    print('batch input')
-    print(batch.shape)
     reconstructions = model.apply(params, batch, mutable=['batch_stats'])[0]
     loss = jnp.mean((reconstructions - batch) ** 2)
     return loss
@@ -34,18 +32,18 @@ def train_step(state: OptState, batch: R_bxdxdxc):
 model_type = 'slot_attention' # CHANGE HERE
 # Initialize the model and optimizer
 ds = 1000 # Number of samples in dataset
-latent_dim = 100  # Example latent dimension
+resolution = 128  # Example width and height dimension of image. DO NOT MODIFY
 num_blocks = 7   # Example number of blocks/slots
 batch_size = 100
 key = jr.PRNGKey(0)
 key, subkey = jr.split(key)
 
 if model_type == 'slot_attention':
-    output_shape = (batch_size, 100, 100, 3) # TODO: make the width and height variable
+    output_shape = (batch_size, resolution, resolution, 3) # TODO: make the width and height variable
     model = SlotAttentionAutoencoder(num_slots=num_blocks, slot_size=64, iters=1, mlp_hidden_size=128, output_shape=output_shape)
 else:
-    output_shape = (batch_size, latent_dim, latent_dim, 3)
-    model = AdditiveAutoencoder(latent_dim, num_blocks)
+    output_shape = (batch_size, resolution, resolution, 3)
+    model = AdditiveAutoencoder(resolution, num_blocks)
 
 params = model.init(key, jr.normal(subkey, output_shape))  # Dummy input for initialization
 
