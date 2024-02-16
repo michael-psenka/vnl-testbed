@@ -6,6 +6,11 @@ data/MNIST
 data/MNIST-CUSTOM
 processed 
 raw
+# weights
+*.pkl
+
+# figure images
+*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
