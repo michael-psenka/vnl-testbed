@@ -27,7 +27,7 @@ import jax.numpy as jnp
 # list of strings of size num_samples containing the text descriptions
 def generate(num_samples=10000,export_jax=False, classes_omit=[], text_omit=[]):
     if os.path.exists("./data/MNIST-CUSTOM/train.pt"):
-        print("exists")
+        print("dataset exists")
         dataset = torch.load("./data/MNIST-CUSTOM/train.pt")
         return dataset, None
 

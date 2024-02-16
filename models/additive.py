@@ -3,9 +3,9 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 from jax import random
-from models.parent.autoencoder import AutoEncoder
+from .parent.autoencoder import Autoencoder
 
-class AdditiveAutoencoder(AutoEncoder):
+class AdditiveAutoencoder(Autoencoder):
     latent_dim: int
     num_blocks: int
 
@@ -121,3 +121,5 @@ class ResNetBlock(nn.Module):
             residual = nn.BatchNorm(use_running_average=False)(residual)
 
         return nn.relu(y + residual)
+    
+__all__ = ["AdditiveAutoencoder"]

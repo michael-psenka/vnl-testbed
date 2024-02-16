@@ -1,12 +1,13 @@
 from typing import Dict
 import jax
+from jax import random as jr
 import jax.numpy as jnp
 import optax
 from optax import OptState
 from flax.training import train_state
 from tqdm import tqdm
-from models.additive import AdditiveAutoencoder
-from models.parent import Autoencoder
+from models import *
+from models.parent.autoencoder import Autoencoder
 from type_shorthands import *
 from data import multimnist
 
@@ -14,6 +15,8 @@ from data import multimnist
 def mse_loss(params: Dict[str, float], model: Autoencoder, batch: R_bxdxdxc):
     # when declaring mutable, model.apply returns tuple, with first element
     # being actual model output
+    print('batch input')
+    print(batch.shape)
     reconstructions = model.apply(params, batch, mutable=['batch_stats'])[0]
     loss = jnp.mean((reconstructions - batch) ** 2)
     return loss
@@ -26,14 +29,23 @@ def train_step(state: OptState, batch: R_bxdxdxc):
     loss, grads = grad_fn(state.params)
     return state.apply_gradients(grads=grads), loss
 
+model_type = 'slot_attention' # CHANGE HERE
 # Initialize the model and optimizer
-ds = 10000 # Number of samples in dataset
+ds = 1000 # Number of samples in dataset
 latent_dim = 100  # Example latent dimension
-num_blocks = 50   # Example number of blocks
-key = jax.random.PRNGKey(0)
+num_blocks = 7   # Example number of blocks/slots
+batch_size = 100
+key = jr.PRNGKey(0)
+key, subkey = jr.split(key)
 
-model = AdditiveAutoencoder(latent_dim, num_blocks)
-params = model.init(key, jnp.ones((1, 100, 100, 3)))  # Dummy input for initialization
+if model_type == 'slot_attention':
+    output_shape = (batch_size, 100, 100, 3) # TODO: make the width and height variable
+    model = SlotAttentionAutoencoder(num_slots=num_blocks, slot_size=64, iters=1, mlp_hidden_size=128, output_shape=output_shape)
+else:
+    output_shape = (batch_size, latent_dim, latent_dim, 3)
+    model = AdditiveAutoencoder(latent_dim, num_blocks)
+
+params = model.init(key, jr.normal(subkey, output_shape))  # Dummy input for initialization
 
 optimizer = optax.adam(learning_rate=1e-3)
 
@@ -49,7 +61,6 @@ images = multimnist.generate(ds, export_jax=True)[0]
 
 # Training loop
 num_epochs = 20
-batch_size = 100
 
 for epoch in range(num_epochs):
     for i in tqdm(range(0, len(images), batch_size)):

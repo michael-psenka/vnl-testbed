@@ -12,11 +12,11 @@ import torch
 from torch import Tensor
 import transformers
 
-from parent.vl import VisionLanguageModel
+from .parent.vl import VisionLanguageModel
 
-class CLIPModel(VisionLanguageModel):
+class M3AEModel(VisionLanguageModel):
     def __init__(self):
-        super(CLIPModel, self).__init__()
+        super(M3AEModel, self).__init__()
 
         # Load the model
         self.model  = MaskedMultimodalAutoencoder()
@@ -790,3 +790,5 @@ def get_transformer_by_config(model_type, config):
         config.mlp_ratio = 4
     else:
         raise ValueError('Unsupported model type!')
+
+__all__ = ["M3AEModel"]

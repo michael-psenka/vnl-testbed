@@ -1,7 +1,8 @@
-from parent.vl import VisionLanguageModel
 import torch
 from torch import Tensor
 import clip
+
+from .parent.vl import VisionLanguageModel
 
 class CLIPModel(VisionLanguageModel):
     def __init__(self):
@@ -41,3 +42,5 @@ class CLIPModel(VisionLanguageModel):
         alignment_score = torch.nn.functional.cosine_similarity(image_features, text_features, dim=-1)
         
         return alignment_score.mean().item()
+    
+__all__ = ["CLIPModel"]
