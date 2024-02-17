@@ -39,10 +39,6 @@ class EncoderCNN(nn.Module):
         x = nn.relu(x)
         x = nn.Conv(features=self.num_features, kernel_size=(5,5), padding='SAME')(x)
         x = nn.relu(x)
-        x = nn.Conv(features=self.num_features, kernel_size=(5,5), padding='SAME')(x)
-        x = nn.relu(x)
-        x = nn.Conv(features=self.num_features, kernel_size=(5,5), padding='SAME')(x)
-        x = nn.relu(x)
         
         # Flatten vector 
         x = jnp.reshape(x, (x.shape[0], x.shape[1]*x.shape[2], x.shape[-1]))
@@ -100,8 +96,6 @@ class DecoderCNN(nn.Module):
         x = nn.ConvTranspose(features=64, kernel_size=(5,5), strides=(2,2), padding='SAME')(x)
         x = nn.relu(x)
         x = nn.ConvTranspose(features=64, kernel_size=(5,5), strides=(2,2), padding='SAME')(x)
-        x = nn.relu(x)
-        x = nn.ConvTranspose(features=64, kernel_size=(5,5), strides=(1,1), padding='SAME')(x)
         x = nn.relu(x)
 
         # Upscale to the desired output shape
