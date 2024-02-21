@@ -34,20 +34,20 @@ model_type = 'slot_attention' # CHANGE HERE
 ds = 1000 # Number of samples in dataset
 resolution = 128  # Example width and height dimension of image. DO NOT MODIFY
 num_blocks = 7   # Example number of blocks/slots
-batch_size = 100
+batch_size = 50
 key = jr.PRNGKey(0)
 key, subkey = jr.split(key)
+lr = 1e-3
+output_shape = (1, resolution, resolution, 3) # TODO: make the width and height variable
 
 if model_type == 'slot_attention':
-    output_shape = (batch_size, resolution, resolution, 3) # TODO: make the width and height variable
-    model = SlotAttentionAutoencoder(num_slots=num_blocks, slot_size=64, iters=1, mlp_hidden_size=128, output_shape=output_shape)
+    model = SlotAttentionAutoencoder(num_slots=num_blocks, slot_size=64, iters=1, mlp_hidden_size=128)
 else:
-    output_shape = (batch_size, resolution, resolution, 3)
     model = AdditiveAutoencoder(resolution, num_blocks)
 
 params = model.init(key, jr.normal(subkey, output_shape))  # Dummy input for initialization
 
-optimizer = optax.adam(learning_rate=1e-3)
+optimizer = optax.adam(learning_rate=lr)
 
 # Initialize training state
 state = train_state.TrainState.create(
@@ -69,17 +69,19 @@ for epoch in range(num_epochs):
 
     print(f"Epoch {epoch}, Loss: {loss}")
 
+print("inference")
 # print reconstruction quality
 # take a random image, and display (i) the image, (ii) the reconstruction, and (iii) the individual reconstructions for all blocks
 image = images[0]
 reconstruction = model.apply(state.params, image[None, ...], mutable=['batch_stats'])[0][0]
 # renormalize to ints in [0, 255]
+clip_value = jnp.percentile(reconstruction, 99)  # For example, clipping to the 99th percentile
+reconstruction = jnp.clip(reconstruction, None, clip_value)
 reconstruction = (reconstruction - reconstruction.min()) / (reconstruction.max() - reconstruction.min())
-
+print(reconstruction)
 plt.subplot(1, 2, 1)
 plt.imshow(image)
 plt.title("Original")
-
 
 plt.subplot(1, 2, 2)
 plt.imshow(reconstruction)
@@ -93,15 +95,17 @@ plt.clf()
 
 # for all 20 blocks, print individual decoding
 z = model.apply(state.params, image[None, ...], mutable=['batch_stats'], method=model.encode)[0]
-decoded_blocks = model.apply(state.params, z, mutable=['batch_stats'], method=model.decode_individual_blocks)[0]
+decoded_im, decoded_blocks = model.apply(state.params, z, 1, mutable=['batch_stats'], method=model.decode)[0]
+print(decoded_blocks.shape)
+# fig = plt.figure(figsize=(20, 12))  # Adjust the figure size as needed
 
-fig = plt.figure(figsize=(12, 6))  # Adjust the figure size as needed
-
+decoded_blocks = jnp.squeeze(decoded_blocks, axis=0)
+print(decoded_blocks.shape)
 for i in range(num_blocks):
-    ax = fig.add_subplot(2, num_blocks // 2, i+1)
+    ax = plt.subplot(2, 4, i+1)
     # renormalize to [0, 1]
     decoded_blocks_show = (decoded_blocks[i] - decoded_blocks[i].min()) / (decoded_blocks[i].max() - decoded_blocks[i].min())
-    ax.imshow(decoded_blocks_show[0])
+    ax.imshow(decoded_blocks_show)
     ax.set_title(f"Block {i}")
 
 plt.tight_layout()  # Add this line to automatically adjust subplot positions

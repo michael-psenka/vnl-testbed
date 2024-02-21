@@ -10,25 +10,51 @@ class SlotAttentionAutoencoder(Autoencoder):
     slot_size: int
     iters: int
     mlp_hidden_size: int
-    output_shape: tuple  # Expected output shape (H, W, C)
+    # output_shape: tuple  # Expected output shape (H, W, C)
 
     def setup(self):
         self.encoder = EncoderCNN(num_features=self.slot_size)
         self.slot_attention = SlotAttentionModule(self.num_slots, self.slot_size, self.iters, self.mlp_hidden_size)
-        self.decoder = DecoderCNN(self.output_shape)
+        self.decoder = DecoderCNN()
 
     def encode(self, x):
-        return self.encoder(x)
+        features = self.encoder(x)
+        slots = self.slot_attention(features)
+        return slots
 
-    def decode(self, x):
-        return self.decoder(x)
+    def decode(self, slots, batch_size):
+        recons = self.decoder(slots)
+        # Reshape and combine across all slots
+        recons_combined, block_recons = reshape_and_combine(recons, batch_size)
+        # Final activation (e.g., sigmoid for images in [0, 1])
+        recons_combined = nn.sigmoid(recons_combined)
+        return recons_combined, block_recons
 
     def __call__(self, x):
         features = self.encoder(x)
+        # [b, h*h, d]
+        print("features")
+        print(features.shape)
         slots = self.slot_attention(features)
-        reconstructed = self.decoder(slots)
-        return reconstructed
+        # [b*n, h, w, d]
+        print("slots")
+        print(slots.shape)
+        recons = self.decoder(slots)
+        # [b*n, h, w, c]
+        print("recons")
+        print(recons.shape)
+
+        # Reshape and combine across all slots
+        recons_combined, _ = reshape_and_combine(recons, batch_size=x.shape[0])
+        # Final activation (e.g., sigmoid for images in [0, 1])
+        recons_combined = nn.sigmoid(recons_combined)
+        return recons_combined
     
+def reshape_and_combine(recons: jnp.ndarray, batch_size: int):
+    recons = jnp.reshape(recons, [batch_size, -1] + list(recons.shape)[1:])
+    recons_combined = jnp.sum(recons, axis=1)
+    return recons_combined, recons
+
 class EncoderCNN(nn.Module):
     num_features: int
 
@@ -47,7 +73,7 @@ class EncoderCNN(nn.Module):
         x = nn.Dense(self.num_features)(x)
         x = nn.BatchNorm(use_running_average=False)(x)
 
-        return x # [b, h*h, d]
+        return x
 
 class SlotAttentionModule(nn.Module):
     num_slots: int
@@ -58,17 +84,17 @@ class SlotAttentionModule(nn.Module):
     @nn.compact
     def __call__(self, inputs):
         # Initialize slots
-        slots = self.param('slots', nn.initializers.xavier_uniform(), (inputs.shape[0], self.num_slots, self.slot_size))
+        slots = self.param('slots', nn.initializers.xavier_uniform(), (self.num_slots, self.slot_size))
 
         # Slot attention iterations
         for _ in range(self.iters):
             prev_slots = slots
             # Compute attention logits
-            attn_logits = jnp.einsum('bid, bjd -> bij', inputs, slots)
+            attn_logits = jnp.einsum('bid, jd -> bij', inputs, slots)
             attn = nn.softmax(attn_logits, axis=-1)
 
             # Weighted sum of features for each slot
-            updates = jnp.einsum('bij, bid -> bjd', attn, inputs)
+            updates = jnp.einsum('bij, bid -> jd', attn, inputs)
 
             # Update slots using a simple MLP
             slots, _ = nn.GRUCell(self.slot_size)(updates, prev_slots)
@@ -78,13 +104,14 @@ class SlotAttentionModule(nn.Module):
             slots += updates
 
         # Convert to [batch*num_slots, slot_size]
+        slots = jnp.broadcast_to(slots, (inputs.shape[0], self.num_slots, self.slot_size))
         slots = jnp.reshape(slots, [-1, slots.shape[-1]])[:, None, None, :]
-        slots = jnp.tile(slots, [1, 8, 8, 1])
+        slots = jnp.tile(slots, [1, 8, 8, 1]) # TODO: change '8' to argument
 
-        return slots # [b, n, d]
+        return slots
 
 class DecoderCNN(nn.Module):
-    output_shape: tuple  # Expected output shape (H, W, C)
+    # output_shape: tuple  # Expected output shape (H, W, C)
 
     @nn.compact
     def __call__(self, x):
@@ -98,16 +125,10 @@ class DecoderCNN(nn.Module):
         x = nn.ConvTranspose(features=64, kernel_size=(5,5), strides=(2,2), padding='SAME')(x)
         x = nn.relu(x)
 
-        # Upscale to the desired output shape
+        # Upscale to the desired output shape (channels)
         # Adjust the number of layers, kernel size, and strides based on the specific output shape
-        x = nn.ConvTranspose(features=self.output_shape[-1], kernel_size=(3,3), strides=(1,1), padding='SAME')(x)
+        x = nn.ConvTranspose(features=3, kernel_size=(3,3), strides=(1,1), padding='SAME')(x)
 
-        # Reshape and Recombine across all slots
-        x = jnp.reshape(x, [self.output_shape[0], -1] + list(x.shape)[1:])
-        x = jnp.sum(x, axis=1)
-
-        # Final activation (e.g., sigmoid for images in [0, 1])
-        x = nn.sigmoid(x)
-        return x # [b, h, h, c]
+        return x 
 
 __all__ = ["SlotAttentionAutoencoder"]
