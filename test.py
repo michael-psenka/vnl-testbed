@@ -1,28 +1,66 @@
-import matplotlib.pyplot as plt
+import keras
+from keras import layers
+
+input_img = keras.Input(shape=(28, 28, 1))
+
+x = layers.Conv2D(16, (3, 3), activation='relu', padding='same')(input_img)
+x = layers.MaxPooling2D((2, 2), padding='same')(x)
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+x = layers.MaxPooling2D((2, 2), padding='same')(x)
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+encoded = layers.MaxPooling2D((2, 2), padding='same')(x)
+
+# at this point the representation is (4, 4, 8) i.e. 128-dimensional
+
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(encoded)
+x = layers.UpSampling2D((2, 2))(x)
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+x = layers.UpSampling2D((2, 2))(x)
+x = layers.Conv2D(16, (3, 3), activation='relu')(x)
+x = layers.UpSampling2D((2, 2))(x)
+decoded = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')(x)
+
+autoencoder = keras.Model(input_img, decoded)
+autoencoder.compile(optimizer='adam', loss='binary_crossentropy')
+
+from keras.datasets import mnist
 import numpy as np
 
-# Create a 2x2 grid of subplots and set the figure size
-fig, ax = plt.subplots(1, 2, figsize=(20, 8))
+(x_train, _), (x_test, _) = mnist.load_data()
 
-# Generate sample data
-x = np.linspace(0, 5, 100)
-y1 = x
-y2 = x**2
-y3 = x**3
-y4 = np.sin(x)
+x_train = x_train.astype('float32') / 255.
+x_test = x_test.astype('float32') / 255.
+x_train = np.reshape(x_train, (len(x_train), 28, 28, 1))
+x_test = np.reshape(x_test, (len(x_test), 28, 28, 1))
 
-# Plot the data in each subplot
-ax[0].plot(x, y3, 'b-', label='Cubic')
-ax[1].plot(x, y4, 'm-', label='Sine')
+from keras.callbacks import TensorBoard
 
-# Customize the appearance of each subplot
-for j in range(2):
-    ax[j].grid(True)
-    ax[j].legend()
+autoencoder.fit(x_train, x_train,
+                epochs=50,
+                batch_size=128,
+                shuffle=True,
+                validation_data=(x_test, x_test),
+                callbacks=[TensorBoard(log_dir='/tmp/autoencoder')])
 
-# Add a title for the entire figure
-fig.suptitle('Example of Subplots')
+decoded_imgs = autoencoder.predict(x_test)
 
-# Display the figure
+# Use Matplotlib (don't ask)
+import matplotlib.pyplot as plt
+
+n = 10  # How many digits we will display
+plt.figure(figsize=(20, 4))
+for i in range(n):
+    # Display original
+    ax = plt.subplot(2, n, i + 1)
+    plt.imshow(x_test[i].reshape(28, 28))
+    plt.gray()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+
+    # Display reconstruction
+    ax = plt.subplot(2, n, i + 1 + n)
+    plt.imshow(decoded_imgs[i].reshape(28, 28))
+    plt.gray()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
 plt.show()
-plt.savefig("plot.png")

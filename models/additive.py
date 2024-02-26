@@ -25,11 +25,15 @@ class AdditiveAutoencoder(Autoencoder):
         return self.encoder(x)
 
     def decode(self, z):
+        decoded_blocks = self.decode_blocks(z)
+        return jnp.sum(jnp.stack(decoded_blocks), axis=0)
+
+    def decode_blocks(self, z):
         # construct list of points to split z at, based on block sizes
 
         z_blocks = jnp.split(z, self.num_blocks, axis=-1)
         decoded_blocks = [decoder_block(z_block) for decoder_block, z_block in zip(self.decoder_blocks, z_blocks)]
-        return jnp.sum(jnp.stack(decoded_blocks), axis=0)
+        return decoded_blocks
 
     @nn.compact
     def __call__(self, x):
@@ -56,17 +60,19 @@ class DecoderBlock(nn.Module):
         # Here's an example using ConvTranspose:
 
         batch_size = x.shape[0]
-        x = x.reshape((batch_size, 1, 1, -1))  # Reshape to 4D tensor
-        x = nn.ConvTranspose(features=64, kernel_size=(4, 4), strides=(2, 2), padding='SAME')(x)
+        x = x.reshape((batch_size, 8, 8, -1))  # Reshape to 4D tensor
+        x = nn.ConvTranspose(features=64, kernel_size=(5,5), strides=(2,2), padding='SAME')(x)
+        x = nn.leaky_relu(x, 0.01)
+        x = nn.ConvTranspose(features=64, kernel_size=(5,5), strides=(2,2), padding='SAME')(x)
+        x = nn.leaky_relu(x, 0.01)
+        x = nn.ConvTranspose(features=64, kernel_size=(5,5), strides=(2,2), padding='SAME')(x)
+        x = nn.leaky_relu(x, 0.01)
+        x = nn.ConvTranspose(features=64, kernel_size=(5,5), strides=(2,2), padding='SAME')(x)
+        x = nn.leaky_relu(x, 0.01)
 
-        x = nn.leaky_relu(x, 0.01)
-        x = nn.ConvTranspose(features=32, kernel_size=(4, 4), strides=(2, 2), padding='SAME')(x)
-        
-        x = nn.leaky_relu(x, 0.01)
-        x = nn.ConvTranspose(features=32, kernel_size=(4, 4), strides=(5, 5), padding='SAME')(x)
-
-        x = nn.leaky_relu(x, 0.01)
-        x = nn.ConvTranspose(features=3, kernel_size=(4, 4), strides=(5, 5), padding='SAME')(x)
+        # Upscale to the desired output shape (channels)
+        # Adjust the number of layers, kernel size, and strides based on the specific output shape
+        x = nn.ConvTranspose(features=3, kernel_size=(3,3), strides=(1,1), padding='SAME')(x)
 
         return x
 
