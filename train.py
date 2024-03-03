@@ -14,6 +14,8 @@ from data import multimnist
 import matplotlib.pyplot as plt
 
 # Define the loss function
+
+
 def mse_loss(params: Dict[str, float], model: Autoencoder, batch: R_bxdxdxc):
     # when declaring mutable, model.apply returns tuple, with first element
     # being actual model output
@@ -24,23 +26,27 @@ def mse_loss(params: Dict[str, float], model: Autoencoder, batch: R_bxdxdxc):
     return loss, reconstructions
 
 # Define a single training step
+
+
 @jax.jit
 def train_step(state: OptState, batch: R_bxdxdxc):
-    loss_fn = lambda params: mse_loss(params, model, batch)
+    def loss_fn(params): return mse_loss(params, model, batch)
     grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
     (loss, reconstructions), grads = grad_fn(state.params)
     return state.apply_gradients(grads=grads), loss, reconstructions
 
-model_type = 'slot_attention' # CHANGE HERE
+
+model_type = 'slot_attention'  # CHANGE HERE
 # Initialize the model and optimizer
-ds = 1000 # Number of samples in dataset
+ds = 1000  # Number of samples in dataset
 resolution = 128  # Example width and height dimension of image. DO NOT MODIFY
 num_blocks = 1   # Example number of blocks/slots
-batch_size = 100
+batch_size = 5
 key = jr.PRNGKey(0)
 key, subkey = jr.split(key)
 lr = 1e-3
-output_shape = (1, resolution, resolution, 3) # TODO: make the width and height variable
+# TODO: make the width and height variable
+output_shape = (1, resolution, resolution, 3)
 decoder_init_shape = (8, 8)
 
 # Dataset
@@ -144,11 +150,13 @@ images = multimnist.generate(ds, export_jax=True)[0]
 # print(images.shape)
 
 if model_type == 'slot_attention':
-    model = SlotAttentionAutoencoder(num_slots=num_blocks, slot_size=64, iters=3, mlp_hidden_size=128, decoder_init_shape=decoder_init_shape, output_shape=output_shape)
+    model = SlotAttentionAutoencoder(num_slots=num_blocks, slot_size=64, iters=3,
+                                     mlp_hidden_size=128, decoder_init_shape=decoder_init_shape, output_shape=output_shape)
 else:
     model = AdditiveAutoencoder(resolution, num_blocks)
 
-params = model.init(key, jr.normal(subkey, output_shape))  # Dummy input for initialization
+params = model.init(key, jr.normal(subkey, output_shape)
+                    )  # Dummy input for initialization
 
 optimizer = optax.adam(learning_rate=lr)
 
@@ -158,7 +166,7 @@ state = train_state.TrainState.create(
     params=params,
     tx=optimizer
 )
- 
+
 # Training loop
 num_epochs = 10
 
@@ -174,12 +182,14 @@ print("inference")
 # print reconstruction quality
 # take a random image, and display (i) the image, (ii) the reconstruction, and (iii) the individual reconstructions for all blocks
 image = images[0]
-reconstruction = model.apply(state.params, image[None, ...], mutable=['batch_stats'])[0][0]
+reconstruction = model.apply(
+    state.params, image[None, ...], mutable=['batch_stats'])[0][0]
 # renormalize to ints in [0, 255]
 # clip_value = jnp.percentile(reconstruction, 99)  # For example, clipping to the 99th percentile
 # reconstruction = jnp.clip(reconstruction, None, clip_value)
 # print("After clipping - Min:", reconstruction.min(), "Max:", reconstruction.max())
-reconstruction = (reconstruction - reconstruction.min()) / (reconstruction.max() - reconstruction.min())
+reconstruction = (reconstruction - reconstruction.min()) / \
+    (reconstruction.max() - reconstruction.min())
 print(reconstruction)
 plt.subplot(1, 2, 1)
 plt.imshow(image)
@@ -198,14 +208,17 @@ plt.savefig("reconstruction.png")
 plt.clf()
 
 # for all 20 blocks, print individual decoding
-z = model.apply(state.params, image[None, ...], mutable=['batch_stats'], method=model.encode)[0]
-decoded_blocks = model.apply(state.params, z, mutable=['batch_stats'], method=model.decode_blocks)[0]
-decoded_blocks = jnp.squeeze(decoded_blocks, axis=0) # Remove batch dimension
+z = model.apply(state.params, image[None, ...], mutable=[
+                'batch_stats'], method=model.encode)[0]
+decoded_blocks = model.apply(state.params, z, mutable=[
+                             'batch_stats'], method=model.decode_blocks)[0]
+decoded_blocks = jnp.squeeze(decoded_blocks, axis=0)  # Remove batch dimension
 print(decoded_blocks.shape)
 for i in range(num_blocks):
     ax = plt.subplot(2, 4, i+1)
     # renormalize to [0, 1]
-    decoded_blocks_show = (decoded_blocks[i] - decoded_blocks[i].min()) / (decoded_blocks[i].max() - decoded_blocks[i].min())
+    decoded_blocks_show = (decoded_blocks[i] - decoded_blocks[i].min()) / (
+        decoded_blocks[i].max() - decoded_blocks[i].min())
     ax.imshow(decoded_blocks_show)
     ax.set_title(f"Block {i}")
 
