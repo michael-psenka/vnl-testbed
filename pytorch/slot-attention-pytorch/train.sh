@@ -1,0 +1,1 @@
+python train.py --model_dir /shared/rzhang/slot_att/tmp/model-run1.ckpt --num_epochs 1000

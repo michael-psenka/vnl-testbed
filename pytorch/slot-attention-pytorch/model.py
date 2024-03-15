@@ -2,6 +2,8 @@ import numpy as np
 from torch import nn
 import torch
 import torch.nn.functional as F
+from collections import defaultdict
+from sklearn.cluster import AgglomerativeClustering
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -102,6 +104,7 @@ class Encoder(nn.Module):
         self.conv2 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.conv3 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.conv4 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
+        self.conv5 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.encoder_pos = SoftPositionEmbed(hid_dim, resolution)
 
     def forward(self, x):
@@ -113,6 +116,8 @@ class Encoder(nn.Module):
         x = F.relu(x)
         x = self.conv4(x)
         x = F.relu(x)
+        # x = self.conv5(x)
+        # x = F.relu(x)
         x = x.permute(0, 2, 3, 1)
         x = self.encoder_pos(x)
         x = torch.flatten(x, 1, 2)
@@ -128,10 +133,10 @@ class Decoder(nn.Module):
             2, 2), padding=2, output_padding=1).to(device)
         self.conv3 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(
             2, 2), padding=2, output_padding=1).to(device)
-        self.conv4 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(
+        # self.conv4 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(
+        #     2, 2), padding=2, output_padding=1).to(device)
+        self.conv5 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(
             2, 2), padding=2, output_padding=1).to(device)
-        self.conv5 = nn.ConvTranspose2d(
-            hid_dim, hid_dim, 5, stride=(1, 1), padding=2).to(device)
         self.conv6 = nn.ConvTranspose2d(
             hid_dim, 4, 3, stride=(1, 1), padding=1)
         self.decoder_initial_size = (8, 8)
@@ -146,11 +151,10 @@ class Decoder(nn.Module):
         x = F.relu(x)
         x = self.conv2(x)
         x = F.relu(x)
-#         x = F.pad(x, (4,4,4,4)) # no longer needed
         x = self.conv3(x)
         x = F.relu(x)
-        x = self.conv4(x)
-        x = F.relu(x)
+        # x = self.conv4(x)
+        # x = F.relu(x)
         x = self.conv5(x)
         x = F.relu(x)
         x = self.conv6(x)
@@ -188,6 +192,43 @@ class SlotAttentionAutoEncoder(nn.Module):
             iters=self.num_iterations,
             eps=1e-8,
             hidden_dim=128)
+
+    def encode(self, image):
+        x = self.encoder_cnn(image)  # CNN Backbone.
+        x = nn.LayerNorm(x.shape[1:]).to(device)(x)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc2(x)  # Feedforward network on set.
+
+        return x
+
+    def slot_att(self, x, num_slots=None):
+        slots = self.slot_attention(x, num_slots)
+        return slots
+
+    def slot_merge(self, slots, n_clusters=2):
+        if not isinstance(slots, np.ndarray):
+            slots = np.array(slots.cpu().detach())
+
+        cluster_labels = AgglomerativeClustering(
+            n_clusters=n_clusters).fit_predict(slots)
+        cluster_means = np.array(
+            [slots[cluster_labels == i].mean(axis=0) for i in range(n_clusters)])
+        cluster_means = torch.tensor(cluster_means).to(device)
+
+        return cluster_means
+
+    def decode(self, slots, batch_size):
+        slots = slots.reshape((-1, slots.shape[-1])).unsqueeze(1).unsqueeze(2)
+        slots = slots.repeat((1, 8, 8, 1))
+
+        x = self.decoder_cnn(slots)
+        recons, masks = x.reshape(
+            batch_size, -1, x.shape[1], x.shape[2], x.shape[3]).split([3, 1], dim=-1)
+        masks = nn.Softmax(dim=1)(masks)
+        recon_combined = torch.sum(recons * masks, dim=1)
+
+        return recon_combined, recons, masks, slots
 
     def forward(self, image):
         # `image` has shape: [batch_size, num_channels, width, height].
