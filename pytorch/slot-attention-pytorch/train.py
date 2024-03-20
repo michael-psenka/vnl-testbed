@@ -7,14 +7,20 @@ import time
 import datetime
 import torch.optim as optim
 import torch
+import wandb
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument
-parser.add_argument('--model_dir', default='./tmp/model10.ckpt',
+parser.add_argument('--results_dir', default='./tmp/model10.ckpt',
                     type=str, help='where to save models')
+parser.add_argument('--model_name', default='objects-all-slots-7',
+                    type=str, help='model name')
+parser.add_argument('--loaded_model', default='objects-all-slots-7',
+                    type=str, help='loaded model name')
+parser.add_argument('--dataset_name', default='CLEVR',
+                    type=str, help='dataset')
 parser.add_argument('--seed', default=0, type=int, help='random seed')
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--num_slots', default=7, type=int,
@@ -38,12 +44,18 @@ parser.add_argument('--num_epochs', default=1000, type=int,
 opt = parser.parse_args()
 resolution = (128, 128)
 
+wandb.init(dir=os.path.abspath(opt.results_dir), project=f'{opt.model_name}_{opt.dataset_name}',
+           job_type='train', mode='online')  # mode='offline'
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 train_set = CLEVR('train')
 model = SlotAttentionAutoEncoder(
     resolution, opt.num_slots, opt.num_iterations, opt.hid_dim).to(device)
-# model.load_state_dict(torch.load('./tmp/model6.ckpt')['model_state_dict'])
+
+if opt.loaded_model:
+    model.load_state_dict(torch.load(
+        f"/shared/rzhang/slot_att/tmp/{opt.loaded_model}.ckpt")['model_state_dict'])
 
 criterion = nn.MSELoss()
 
@@ -87,10 +99,12 @@ for epoch in range(opt.num_epochs):
 
     total_loss /= len(train_dataloader)
 
+    wandb.log({'loss': total_loss}, step=epoch)
+
     print("Epoch: {}, Loss: {}, Time: {}".format(epoch, total_loss,
                                                  datetime.timedelta(seconds=time.time() - start)))
 
     if not epoch % 10:
         torch.save({
             'model_state_dict': model.state_dict(),
-        }, opt.model_dir)
+        }, opt.results_dir + f"/{opt.model_name}.ckpt")

@@ -1,0 +1,1 @@
+python train.py --results_dir /shared/rzhang/slot_att/tmp/objects-all-freeze7-slot6.ckpt --model_name="objects-all-freeze7-slot6" --loaded_model="objects-all-slots-7" --num_epochs 1000

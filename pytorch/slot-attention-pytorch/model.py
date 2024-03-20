@@ -104,7 +104,6 @@ class Encoder(nn.Module):
         self.conv2 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.conv3 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.conv4 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
-        self.conv5 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.encoder_pos = SoftPositionEmbed(hid_dim, resolution)
 
     def forward(self, x):
@@ -116,8 +115,6 @@ class Encoder(nn.Module):
         x = F.relu(x)
         x = self.conv4(x)
         x = F.relu(x)
-        # x = self.conv5(x)
-        # x = F.relu(x)
         x = x.permute(0, 2, 3, 1)
         x = self.encoder_pos(x)
         x = torch.flatten(x, 1, 2)
@@ -133,10 +130,10 @@ class Decoder(nn.Module):
             2, 2), padding=2, output_padding=1).to(device)
         self.conv3 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(
             2, 2), padding=2, output_padding=1).to(device)
-        # self.conv4 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(
-        #     2, 2), padding=2, output_padding=1).to(device)
-        self.conv5 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(
+        self.conv4 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(
             2, 2), padding=2, output_padding=1).to(device)
+        self.conv5 = nn.ConvTranspose2d(
+            hid_dim, hid_dim, 5, stride=(1, 1), padding=2).to(device)
         self.conv6 = nn.ConvTranspose2d(
             hid_dim, 4, 3, stride=(1, 1), padding=1)
         self.decoder_initial_size = (8, 8)
@@ -153,8 +150,8 @@ class Decoder(nn.Module):
         x = F.relu(x)
         x = self.conv3(x)
         x = F.relu(x)
-        # x = self.conv4(x)
-        # x = F.relu(x)
+        x = self.conv4(x)
+        x = F.relu(x)
         x = self.conv5(x)
         x = F.relu(x)
         x = self.conv6(x)
