@@ -49,7 +49,6 @@ wandb.init(dir=os.path.abspath(opt.results_dir), project=f'{opt.model_name}_{opt
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-train_set = CLEVR('train')
 model = SlotAttentionAutoEncoder(
     resolution, opt.num_slots, opt.num_iterations, opt.hid_dim).to(device)
 
@@ -57,13 +56,12 @@ if opt.loaded_model:
     model.load_state_dict(torch.load(
         f"/shared/rzhang/slot_att/tmp/{opt.loaded_model}.ckpt")['model_state_dict'])
 
-criterion = nn.MSELoss()
-
-params = [{'params': model.parameters()}]
-
+train_set = CLEVR('train')
 train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
                                                shuffle=True, num_workers=opt.num_workers)
 
+criterion = nn.MSELoss()
+params = [{'params': model.parameters()}]
 optimizer = optim.Adam(params, lr=opt.learning_rate)
 
 start = time.time()
