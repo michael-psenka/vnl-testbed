@@ -22,6 +22,15 @@ def unfreeze_model(model):
         param.requires_grad = True
 
 
+def stack_model(image, model, frozen_model, batch_size=32):
+    z = frozen_model.encode(image)
+    slots_k = frozen_model.slot_attention(z)
+    slots_kminus1 = slots_k[:, :-1, :]
+    # Instead of focusing attention spatially across the image, the model now allocates attention among conceptual entities represented by slots.
+    slots_kminus1 = model.slot_attention(slots_kminus1)
+    return model.decode(slots_kminus1, batch_size)
+
+
 parser = argparse.ArgumentParser(
     description="Fine-tune a pre-trained model.")
 
@@ -61,17 +70,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load your model
 resolution = (128, 128)
-model = SlotAttentionAutoEncoder(
+frozen_model = SlotAttentionAutoEncoder(
     resolution, opt.num_slots, opt.num_iterations, opt.hid_dim).to(device)
-model.load_state_dict(torch.load(opt.model_path)['model_state_dict'])
+frozen_model.load_state_dict(torch.load(opt.model_path)['model_state_dict'])
 
 # Freeze the model weights
-freeze_model(model)
+freeze_model(frozen_model)
 
-# Make modifications to your model here if necessary
-# For example, changing the final layer, unfreezing certain layers, etc.
-# model.new_layer = nn.Linear(...).to(device)
-# unfreeze_model(model.new_layer)  # Only train new_layer
+# Initialize a new model
+model = SlotAttentionAutoEncoder(
+    resolution, opt.num_slots, opt.num_iterations, opt.hid_dim).to(device)
 
 train_set = CLEVR('train')
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
@@ -107,7 +115,8 @@ for epoch in range(opt.num_epochs):
         optimizer.param_groups[0]['lr'] = learning_rate
 
         image = sample['image'].to(device)
-        recon_combined, recons, masks, slots = model(image)
+        recon_combined, recons, masks, slots = stack_model(
+            image, model, frozen_model, batch_size=opt.batch_size)
         loss = criterion(recon_combined, image)
         total_loss += loss.item()
 
