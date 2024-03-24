@@ -28,7 +28,7 @@ def stack_model(image, model, frozen_model, batch_size=32):
     slots_kminus1 = slots_k[:, :-1, :]
     # Instead of focusing attention spatially across the image, the model now allocates attention among conceptual entities represented by slots.
     slots_kminus1 = model.slot_attention(slots_kminus1)
-    return model.decode(slots_kminus1, batch_size)
+    return frozen_model.decode(slots_kminus1, batch_size)
 
 
 parser = argparse.ArgumentParser(

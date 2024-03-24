@@ -224,6 +224,7 @@ class SlotAttentionAutoEncoder(nn.Module):
             batch_size, -1, x.shape[1], x.shape[2], x.shape[3]).split([3, 1], dim=-1)
         masks = nn.Softmax(dim=1)(masks)
         recon_combined = torch.sum(recons * masks, dim=1)
+        recon_combined = recon_combined.permute(0, 3, 1, 2)
 
         return recon_combined, recons, masks, slots
 

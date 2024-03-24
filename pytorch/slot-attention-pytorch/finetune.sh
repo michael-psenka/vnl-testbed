@@ -1,1 +1,1 @@
-python finetune.py --num_slots 6 --num_epochs 1000 --results_dir /shared/rzhang/slot_att/results/ --model_path="/shared/rzhang/slot_att/tmp/objects-all-slots-7.ckpt" --finetuned_model_name="slots6-freeze7"
+python finetune.py --num_slots 6 --num_epochs 1000 --results_dir /shared/rzhang/slot_att/results/ --model_path="/shared/rzhang/slot_att/results/objects-all-slots-7.ckpt" --finetuned_model_name="slots6-freeze7"
