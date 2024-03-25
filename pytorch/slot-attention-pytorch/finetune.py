@@ -46,7 +46,7 @@ parser.add_argument('--dataset_name', default='CLEVR',
                     type=str, help='dataset')
 parser.add_argument('--batch_size', type=int, default=16,
                     help='Batch size for training')
-parser.add_argument('--num_slots', default=7, type=int,
+parser.add_argument('--num_slots', default=6, type=int, required=True,
                     help='Number of slots in Slot Attention.')
 parser.add_argument('--num_iterations', default=3, type=int,
                     help='Number of attention iterations.')
@@ -90,7 +90,7 @@ frozen_model.eval()
 
 # Initialize a new model
 model = CustomModel(slot_dim=opt.hid_dim, depth=4, heads=8,
-                    mlp_dim=512, max_seq_length=512).to(device)
+                    mlp_dim=512, max_seq_length=opt.num_slots).to(device)
 
 train_set = CLEVR('train')
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
