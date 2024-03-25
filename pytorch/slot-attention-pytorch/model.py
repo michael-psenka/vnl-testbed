@@ -76,25 +76,35 @@ class TransformerBlock(nn.Module):
 
 
 class SlotTransformer(nn.Module):
-    def __init__(self, num_slots, dim, iters=3, heads=8, dropout=0.1, forward_expansion=4):
+    def __init__(self, num_slots, dim, iters=3, heads=8, dropout=0.1, forward_expansion=4, use_transformer_encoder=False, use_transformer_decoder=False, max_seq_length=512):
         super(SlotTransformer, self).__init__()
         self.num_slots = num_slots
         self.iters = iters
+        self.use_transformer_encoder = use_transformer_encoder
+        self.use_transformer_decoder = use_transformer_decoder
 
         self.slots_mu = nn.Parameter(torch.randn(1, 1, dim))
         self.slots_sigma = nn.Parameter(torch.rand(1, 1, dim))
 
-        self.transformer_blocks = nn.ModuleList(
-            [
-                TransformerBlock(
-                    dim,
-                    heads,
-                    dropout=dropout,
-                    forward_expansion=forward_expansion,
-                )
-                for _ in range(iters)
-            ]
-        )
+        if self.use_transformer_encoder:
+            self.token_encoder = TokenEncoder(
+                emb_size=dim, depth=iters, heads=heads, mlp_dim=forward_expansion * dim, max_seq_length=max_seq_length)
+        else:
+            self.transformer_blocks = nn.ModuleList(
+                [
+                    TransformerBlock(
+                        dim,
+                        heads,
+                        dropout=dropout,
+                        forward_expansion=forward_expansion,
+                    )
+                    for _ in range(iters)
+                ]
+            )
+
+        if self.use_transformer_decoder:
+            self.token_decoder = TokenDecoder(
+                emb_size=dim, depth=iters, heads=heads, mlp_dim=forward_expansion * dim, max_seq_length=max_seq_length)
 
         self.dropout = nn.Dropout(dropout)
 
@@ -106,10 +116,52 @@ class SlotTransformer(nn.Module):
         sigma = self.slots_sigma.expand(b, n_s, -1)
         slots = torch.normal(mu, sigma)
 
-        for transformer in self.transformer_blocks:
-            slots = transformer(inputs, inputs, slots)
+        if self.use_transformer_encoder:
+            slots = self.token_encoder(slots)
+        else:
+            for transformer in self.transformer_blocks:
+                slots = transformer(inputs, inputs, slots)
+
+        if self.use_transformer_decoder:
+            # Assuming the slots can directly be treated as decoder inputs
+            slots = self.token_decoder(slots)
 
         return slots
+
+# standard transformer encoder/decoder using torch.nn
+
+
+class TokenEncoder(nn.Module):
+    def __init__(self, emb_size=256, depth=4, heads=8, mlp_dim=512, max_seq_length=512):
+        super().__init__()
+        self.pos_embedding = nn.Parameter(
+            torch.zeros(1, max_seq_length, emb_size))
+        layer = nn.TransformerEncoderLayer(
+            d_model=emb_size, nhead=heads, dim_feedforward=mlp_dim, activation="relu")
+        self.transformer = nn.TransformerEncoder(layer, num_layers=depth)
+
+    def forward(self, x):
+        seq_length = x.size(1)
+        x = x + self.pos_embedding[:, :seq_length, :]
+        return self.transformer(x)
+
+
+class TokenDecoder(nn.Module):
+    def __init__(self, emb_size=256, depth=4, heads=8, mlp_dim=512, max_seq_length=512):
+        super().__init__()
+        self.pos_embedding = nn.Parameter(
+            torch.zeros(1, max_seq_length, emb_size))
+        layer = nn.TransformerDecoderLayer(
+            d_model=emb_size, nhead=heads, dim_feedforward=mlp_dim, activation="relu")
+        self.transformer = nn.TransformerDecoder(layer, num_layers=depth)
+
+    def forward(self, z):
+        seq_length = z.size(1)
+        z = z + self.pos_embedding[:, :seq_length, :]
+        # In a typical autoencoder, the memory and target could be the same. However, for simplicity, we're just using the encoded representation directly.
+        # An additional token for the start of sequence might be added, and similarly for the target during training.
+        memory = z.detach().clone()
+        return self.transformer(z, memory)
 
 
 class SlotAttention(nn.Module):
@@ -201,7 +253,7 @@ class SoftPositionEmbed(nn.Module):
         return inputs + grid
 
 
-class Encoder(nn.Module):
+class EncoderCNN(nn.Module):
     def __init__(self, resolution, hid_dim, depth=1):
         super().__init__()
         self.conv1 = nn.Conv2d(3, hid_dim, 5, padding=2)
@@ -229,7 +281,7 @@ class Encoder(nn.Module):
         return x
 
 
-class Decoder(nn.Module):
+class DecoderCNN(nn.Module):
     def __init__(self, hid_dim, resolution):
         super().__init__()
         self.conv1 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(
@@ -272,7 +324,7 @@ class Decoder(nn.Module):
 
 
 class SlotAttentionAutoEncoder(nn.Module):
-    def __init__(self, resolution, num_slots, num_iterations, hid_dim, cnn_depth=4, use_trfmr=False):
+    def __init__(self, resolution, num_slots, num_iterations, hid_dim, cnn_depth=4, use_trfmr=False, use_transformer_encoder=False, use_transformer_decoder=False, pre_trained_model=None):
         """Builds the Slot Attention-based auto-encoder.
         Args:
         resolution: Tuple of integers specifying width and height of input image.
@@ -286,9 +338,21 @@ class SlotAttentionAutoEncoder(nn.Module):
         self.num_iterations = num_iterations
         self.cnn_depth = cnn_depth
 
-        self.encoder_cnn = Encoder(
+        # if pre_trained_model:
+        #     self.encoder = pre_trained_model.encoder
+        #     self.fc1 = pre_trained_model.fc1
+        #     self.fc2 = pre_trained_model.fc2
+        #     self.decoder = pre_trained_model.decoder
+        #     self.slot_attention = pre_trained_model.slot_attention
+        #     self.slot_attention = SlotAttention(
+        #         num_slots=num_slots-1, dim=slot_dim, iters=num_iterations, eps=1e-8, hidden_dim=hid_dim
+        #     )
+        #     # Freeze the components from the pre-trained model
+        #     self.freeze_model(pre_trained_model)
+        # else:
+        self.encoder = EncoderCNN(
             self.resolution, self.hid_dim, depth=self.cnn_depth)
-        self.decoder_cnn = Decoder(self.hid_dim, self.resolution)
+        self.decoder = DecoderCNN(self.hid_dim, self.resolution)
 
         self.fc1 = nn.Linear(hid_dim, hid_dim)
         self.fc2 = nn.Linear(hid_dim, hid_dim)
@@ -297,6 +361,8 @@ class SlotAttentionAutoEncoder(nn.Module):
             self.slot_attention = SlotTransformer(
                 num_slots=self.num_slots,
                 dim=hid_dim,
+                use_transformer_encoder=use_transformer_encoder,
+                use_transformer_decoder=use_transformer_decoder,
             )
         else:
             self.slot_attention = SlotAttention(
@@ -307,7 +373,7 @@ class SlotAttentionAutoEncoder(nn.Module):
                 hidden_dim=128)
 
     def encode(self, image):
-        x = self.encoder_cnn(image)  # CNN Backbone.
+        x = self.encoder(image)
         x = nn.LayerNorm(x.shape[1:]).to(device)(x)
         x = self.fc1(x)
         x = F.relu(x)
@@ -335,7 +401,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         slots = slots.reshape((-1, slots.shape[-1])).unsqueeze(1).unsqueeze(2)
         slots = slots.repeat((1, 8, 8, 1))
 
-        x = self.decoder_cnn(slots)
+        x = self.decoder(slots)
         recons, masks = x.reshape(
             batch_size, -1, x.shape[1], x.shape[2], x.shape[3]).split([3, 1], dim=-1)
         masks = nn.Softmax(dim=1)(masks)
@@ -348,7 +414,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         # `image` has shape: [batch_size, num_channels, width, height].
 
         # Convolutional encoder with position embedding.
-        x = self.encoder_cnn(image)  # CNN Backbone.
+        x = self.encoder(image)
         x = nn.LayerNorm(x.shape[1:]).to(device)(x)
         x = self.fc1(x)
         x = F.relu(x)
@@ -364,7 +430,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         slots = slots.repeat((1, 8, 8, 1))
 
         # `slots` has shape: [batch_size*num_slots, width_init, height_init, slot_size].
-        x = self.decoder_cnn(slots)
+        x = self.decoder(slots)
         # `x` has shape: [batch_size*num_slots, width, height, num_channels+1].
 
         # Undo combination of slot and batch dimension; split alpha masks.

@@ -45,6 +45,10 @@ parser.add_argument('--cnn_depth', default=4, type=int,
                     help='number of encoder layers')
 parser.add_argument('--use_trfmr', default=False, type=bool,
                     help='use transformer in slot attention')
+parser.add_argument('--use_trfmr_encoder', default=False, type=bool,
+                    help='use transformer encoder in slot attention')
+parser.add_argument('--use_trfmr_decoder', default=False, type=bool,
+                    help='use transformer decoder in slot attention')
 
 opt = parser.parse_args()
 resolution = (128, 128)
@@ -55,12 +59,13 @@ experiment_index = len(glob(f"{opt.results_dir}/*"))
 # Create an experiment folder
 model_filename = f"{experiment_index:03d}-{opt.model_name}"
 wandb.init(dir=os.path.abspath(opt.results_dir), project='slot_att_pretrained', name=model_filename,
-           job_type='train', mode='online')  # mode='offline'
+           config=opt, job_type='train', mode='online')  # mode='offline'
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 model = SlotAttentionAutoEncoder(
-    resolution, opt.num_slots, opt.num_iterations, opt.hid_dim, cnn_depth=opt.cnn_depth, use_trfmr=opt.use_trfmr).to(device)
+    resolution, opt.num_slots, opt.num_iterations, opt.hid_dim, cnn_depth=opt.cnn_depth,
+    use_trfmr=opt.use_trfmr, use_transformer_encoder=opt.use_trfmr_encoder, use_transformer_decoder=opt.use_trfmr_decoder).to(device)
 
 if opt.loaded_model:
     model.load_state_dict(torch.load(
