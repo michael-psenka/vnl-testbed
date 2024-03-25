@@ -7,6 +7,7 @@ from model import SlotAttentionAutoEncoder  # Assuming this is your model class
 from torchvision.transforms import Compose, ToTensor, Resize
 import wandb
 import os
+from glob import glob
 from tqdm import tqdm
 import time
 import datetime
@@ -90,9 +91,15 @@ params = [{'params': model.parameters()}]
 optimizer = optim.Adam(params, lr=opt.learning_rate)
 criterion = nn.MSELoss()
 
+# Make results folder (holds all experiment subfolders)
+os.makedirs(opt.results_dir, exist_ok=True)
+experiment_index = len(glob(f"{opt.results_dir}/*"))
+# model_string_name = opt.model.replace("/", "-")
+# Create an experiment folder
+model_filename = f"{experiment_index:03d}-{opt.finetuned_model_name}"
 # Setup WandB
-wandb.init(dir=os.path.abspath(opt.results_dir), project=f'{opt.finetuned_model_name}_{opt.dataset_name}',
-           job_type='train', mode='online')  # mode='offline'
+wandb.init(dir=os.path.abspath(opt.results_dir), project=f"{opt.finetuned_model_name}_{opt.dataset_name}", name=model_filename,
+           config=opt, job_type='train', mode='online')  # mode='offline'
 
 start = time.time()
 i = 0
@@ -136,4 +143,4 @@ for epoch in range(opt.num_epochs):
     if not epoch % 10:
         torch.save({
             'model_state_dict': model.state_dict(),
-        }, opt.results_dir + f"/{opt.finetuned_model_name}.ckpt")
+        }, opt.results_dir + f"/{model_filename}.ckpt")

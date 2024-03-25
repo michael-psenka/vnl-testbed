@@ -1,1 +1,3 @@
-python train.py --results_dir /shared/rzhang/slot_att/results --model_name="objects-all-slots-7" --dataset_name="CLEVR" --num_epochs 1000
+# python train.py --results_dir /shared/rzhang/slot_att/results --model_name="objects-all-slots-7" --dataset_name="CLEVR" 
+# python train.py --results_dir /shared/rzhang/slot_att/results --model_name="objects-all-slots-7-L-encoder" --dataset_name="CLEVR" --cnn_depth 6 
+python train.py --results_dir /shared/rzhang/slot_att/results --model_name="objects-all-slots-7-trfmr" --dataset_name="CLEVR" --use_trfmr True

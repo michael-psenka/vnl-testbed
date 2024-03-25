@@ -8,6 +8,7 @@ import datetime
 import torch.optim as optim
 import torch
 import wandb
+from glob import glob
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -17,7 +18,7 @@ parser.add_argument('--results_dir', default='./tmp/model10.ckpt',
                     type=str, help='where to save models')
 parser.add_argument('--model_name', default='objects-all-slots-7',
                     type=str, help='model name')
-parser.add_argument('--loaded_model', default='objects-all-slots-7',
+parser.add_argument('--loaded_model', default=None,
                     type=str, help='loaded model name')
 parser.add_argument('--dataset_name', default='CLEVR',
                     type=str, help='dataset')
@@ -40,17 +41,26 @@ parser.add_argument('--num_workers', default=4, type=int,
                     help='number of workers for loading data')
 parser.add_argument('--num_epochs', default=1000, type=int,
                     help='number of workers for loading data')
+parser.add_argument('--cnn_depth', default=4, type=int,
+                    help='number of encoder layers')
+parser.add_argument('--use_trfmr', default=False, type=bool,
+                    help='use transformer in slot attention')
 
 opt = parser.parse_args()
 resolution = (128, 128)
-
-wandb.init(dir=os.path.abspath(opt.results_dir), project=f'{opt.model_name}_{opt.dataset_name}',
+# {opt.model_name}_{opt.dataset_name}
+# Make results folder (holds all experiment subfolders)
+os.makedirs(opt.results_dir, exist_ok=True)
+experiment_index = len(glob(f"{opt.results_dir}/*"))
+# Create an experiment folder
+model_filename = f"{experiment_index:03d}-{opt.model_name}"
+wandb.init(dir=os.path.abspath(opt.results_dir), project='slot_att_pretrained', name=model_filename,
            job_type='train', mode='online')  # mode='offline'
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 model = SlotAttentionAutoEncoder(
-    resolution, opt.num_slots, opt.num_iterations, opt.hid_dim).to(device)
+    resolution, opt.num_slots, opt.num_iterations, opt.hid_dim, cnn_depth=opt.cnn_depth, use_trfmr=opt.use_trfmr).to(device)
 
 if opt.loaded_model:
     model.load_state_dict(torch.load(
@@ -105,4 +115,4 @@ for epoch in range(opt.num_epochs):
     if not epoch % 10:
         torch.save({
             'model_state_dict': model.state_dict(),
-        }, opt.results_dir + f"/{opt.model_name}.ckpt")
+        }, opt.results_dir + f"/{model_filename}.ckpt")

@@ -1,3 +1,4 @@
+import torch.nn as nn
 import numpy as np
 from torch import nn
 import torch
@@ -6,6 +7,109 @@ from collections import defaultdict
 from sklearn.cluster import AgglomerativeClustering
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, embed_size, heads):
+        super(MultiHeadAttention, self).__init__()
+        self.embed_size = embed_size
+        self.heads = heads
+        self.head_dim = embed_size // heads
+
+        assert (
+            self.head_dim * heads == embed_size
+        ), "Embedding size needs to be divisible by heads"
+
+        self.values = nn.Linear(self.head_dim, self.head_dim, bias=False)
+        self.keys = nn.Linear(self.head_dim, self.head_dim, bias=False)
+        self.queries = nn.Linear(self.head_dim, self.head_dim, bias=False)
+        self.fc_out = nn.Linear(heads * self.head_dim, embed_size)
+
+    def forward(self, value, key, query):
+        N = query.shape[0]
+        value_len, key_len, query_len = value.shape[1], key.shape[1], query.shape[1]
+
+        # Split the embedding into self.heads pieces
+        values = value.reshape(N, value_len, self.heads, self.head_dim)
+        keys = key.reshape(N, key_len, self.heads, self.head_dim)
+        queries = query.reshape(N, query_len, self.heads, self.head_dim)
+
+        values = self.values(values)
+        keys = self.keys(keys)
+        queries = self.queries(queries)
+
+        # Einsum does matrix mul & sum for attention scores
+        attention = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
+        attention = attention / (self.embed_size ** (1 / 2))
+        attention = torch.softmax(attention, dim=3)
+
+        out = torch.einsum("nhql,nlhd->nqhd", [attention, values]).reshape(
+            N, query_len, self.heads * self.head_dim
+        )
+        out = self.fc_out(out)
+        return out
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, embed_size, heads, dropout, forward_expansion):
+        super(TransformerBlock, self).__init__()
+        self.attention = MultiHeadAttention(embed_size, heads)
+        self.norm1 = nn.LayerNorm(embed_size)
+        self.norm2 = nn.LayerNorm(embed_size)
+
+        self.feed_forward = nn.Sequential(
+            nn.Linear(embed_size, forward_expansion * embed_size),
+            nn.ReLU(),
+            nn.Linear(forward_expansion * embed_size, embed_size),
+        )
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, value, key, query):
+        attention = self.attention(value, key, query)
+
+        # Add skip connection, run through normalization and finally dropout
+        x = self.dropout(self.norm1(attention + query))
+        forward = self.feed_forward(x)
+        out = self.dropout(self.norm2(forward + x))
+        return out
+
+
+class SlotTransformer(nn.Module):
+    def __init__(self, num_slots, dim, iters=3, heads=8, dropout=0.1, forward_expansion=4):
+        super(SlotTransformer, self).__init__()
+        self.num_slots = num_slots
+        self.iters = iters
+
+        self.slots_mu = nn.Parameter(torch.randn(1, 1, dim))
+        self.slots_sigma = nn.Parameter(torch.rand(1, 1, dim))
+
+        self.transformer_blocks = nn.ModuleList(
+            [
+                TransformerBlock(
+                    dim,
+                    heads,
+                    dropout=dropout,
+                    forward_expansion=forward_expansion,
+                )
+                for _ in range(iters)
+            ]
+        )
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, inputs, num_slots=None):
+        b, n, d = inputs.shape
+        n_s = num_slots if num_slots is not None else self.num_slots
+
+        mu = self.slots_mu.expand(b, n_s, -1)
+        sigma = self.slots_sigma.expand(b, n_s, -1)
+        slots = torch.normal(mu, sigma)
+
+        for transformer in self.transformer_blocks:
+            slots = transformer(inputs, inputs, slots)
+
+        return slots
 
 
 class SlotAttention(nn.Module):
@@ -98,23 +202,27 @@ class SoftPositionEmbed(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, resolution, hid_dim):
+    def __init__(self, resolution, hid_dim, depth=1):
         super().__init__()
         self.conv1 = nn.Conv2d(3, hid_dim, 5, padding=2)
-        self.conv2 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
-        self.conv3 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
-        self.conv4 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
+        self.layers = nn.ModuleList(
+            [nn.Conv2d(hid_dim, hid_dim, 5, padding=2) for i in range(depth-1)])
+        # self.conv2 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
+        # self.conv3 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
+        # self.conv4 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.encoder_pos = SoftPositionEmbed(hid_dim, resolution)
 
     def forward(self, x):
         x = self.conv1(x)
         x = F.relu(x)
-        x = self.conv2(x)
-        x = F.relu(x)
-        x = self.conv3(x)
-        x = F.relu(x)
-        x = self.conv4(x)
-        x = F.relu(x)
+        for layer in self.layers:
+            x = F.relu(layer(x))
+        # x = self.conv2(x)
+        # x = F.relu(x)
+        # x = self.conv3(x)
+        # x = F.relu(x)
+        # x = self.conv4(x)
+        # x = F.relu(x)
         x = x.permute(0, 2, 3, 1)
         x = self.encoder_pos(x)
         x = torch.flatten(x, 1, 2)
@@ -164,7 +272,7 @@ class Decoder(nn.Module):
 
 
 class SlotAttentionAutoEncoder(nn.Module):
-    def __init__(self, resolution, num_slots, num_iterations, hid_dim):
+    def __init__(self, resolution, num_slots, num_iterations, hid_dim, cnn_depth=4, use_trfmr=False):
         """Builds the Slot Attention-based auto-encoder.
         Args:
         resolution: Tuple of integers specifying width and height of input image.
@@ -176,19 +284,27 @@ class SlotAttentionAutoEncoder(nn.Module):
         self.resolution = resolution
         self.num_slots = num_slots
         self.num_iterations = num_iterations
+        self.cnn_depth = cnn_depth
 
-        self.encoder_cnn = Encoder(self.resolution, self.hid_dim)
+        self.encoder_cnn = Encoder(
+            self.resolution, self.hid_dim, depth=self.cnn_depth)
         self.decoder_cnn = Decoder(self.hid_dim, self.resolution)
 
         self.fc1 = nn.Linear(hid_dim, hid_dim)
         self.fc2 = nn.Linear(hid_dim, hid_dim)
 
-        self.slot_attention = SlotAttention(
-            num_slots=self.num_slots,
-            dim=hid_dim,
-            iters=self.num_iterations,
-            eps=1e-8,
-            hidden_dim=128)
+        if use_trfmr:
+            self.slot_attention = SlotTransformer(
+                num_slots=self.num_slots,
+                dim=hid_dim,
+            )
+        else:
+            self.slot_attention = SlotAttention(
+                num_slots=self.num_slots,
+                dim=hid_dim,
+                iters=self.num_iterations,
+                eps=1e-8,
+                hidden_dim=128)
 
     def encode(self, image):
         x = self.encoder_cnn(image)  # CNN Backbone.
