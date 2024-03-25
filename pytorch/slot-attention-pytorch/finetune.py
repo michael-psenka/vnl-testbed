@@ -24,13 +24,13 @@ def unfreeze_model(model):
         param.requires_grad = True
 
 
-def stack_model(image, model, frozen_model, batch_size=32):
-    z = frozen_model.encode(image)
-    slots_k = frozen_model.slot_attention(z)
+def stack_model(image, model, batch_size=32):
+    z = model.encode(image)
+    slots_k = model.slot_attention(z)
     slots_kminus1 = slots_k[:, :-1, :]
     # Instead of focusing attention spatially across the image, the model now allocates attention among conceptual entities represented by slots.
     slots_kminus1 = model.slot_attention(slots_kminus1)
-    return frozen_model.decode(slots_kminus1, batch_size)
+    return model.decode(slots_kminus1, batch_size)
 
 
 parser = argparse.ArgumentParser(
@@ -87,7 +87,7 @@ frozen_model = SlotAttentionAutoEncoder(
 frozen_model.load_state_dict(torch.load(opt.model_path)['model_state_dict'])
 
 # Freeze the model weights
-freeze_model(frozen_model)
+frozen_model.eval()
 
 # Initialize a new model
 model = SlotAttentionAutoEncoder(
@@ -98,6 +98,11 @@ model.fc2 = frozen_model.fc2
 model.encoder = frozen_model.encoder
 model.decoder = frozen_model.decoder
 model.slot_attention = frozen_model.slot_attention
+
+# Freeze the specific components
+for name, param in model.named_parameters():
+    if "fc1" in name or "fc2" in name or "encoder" in name or "decoder" in name or "slot_attention" in name:
+        param.requires_grad = False
 
 train_set = CLEVR('train')
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
@@ -141,7 +146,7 @@ for epoch in range(opt.num_epochs):
 
         image = sample['image'].to(device)
         recon_combined, recons, masks, slots = stack_model(
-            image, model, frozen_model, batch_size=opt.batch_size)
+            image, model, batch_size=opt.batch_size)
         loss = criterion(recon_combined, image)
         total_loss += loss.item()
 
