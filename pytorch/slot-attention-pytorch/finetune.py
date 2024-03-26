@@ -84,12 +84,10 @@ frozen_model = SlotAttentionAutoEncoder(
     resolution, opt.num_slots, opt.num_iterations, opt.hid_dim, cnn_depth=opt.cnn_depth,
     use_trfmr=opt.use_trfmr, use_transformer_encoder=opt.use_trfmr_encoder, use_transformer_decoder=opt.use_trfmr_decoder).to(device)
 frozen_model.load_state_dict(torch.load(opt.model_path)['model_state_dict'])
-
-# Freeze the model weights
 frozen_model.eval()
 
 # Initialize a new model
-model = CustomModel(slot_dim=opt.hid_dim, depth=4, heads=8,
+model = Transformer(emb_size=opt.hid_dim, depth=4, heads=8,
                     mlp_dim=512, max_seq_length=opt.num_slots).to(device)
 
 train_set = CLEVR('train')
@@ -135,12 +133,9 @@ for epoch in range(opt.num_epochs):
         image = sample['image'].to(device)
         z = frozen_model.encode(image)
         slots_k = frozen_model.slot_attention(z)
-        # recon_combined, recons, masks, slots = stack_model(
-        #     image, model, batch_size=opt.batch_size)
-        slots_kminus1_before = slots_k[:, :-1, :]
-        # Instead of focusing attention spatially across the image, the model now allocates attention among conceptual entities represented by slots.
-        slots_kminus1 = model(slots_kminus1_before)
-        loss = criterion(slots_kminus1, slots_kminus1_before)
+        slots_kminus1 = slots_k[:, :-1, :]
+        slots_k_recons = model(slots_kminus1)
+        loss = criterion(slots_k, slots_k_recons)
         total_loss += loss.item()
 
         # del recons, masks, slots
