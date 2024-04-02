@@ -46,8 +46,8 @@ parser.add_argument('--dataset_name', default='CLEVR',
                     type=str, help='dataset')
 parser.add_argument('--batch_size', type=int, default=16,
                     help='Batch size for training')
-parser.add_argument('--num_slots', default=6, type=int, required=True,
-                    help='Number of slots in Slot Attention.')
+parser.add_argument('--base_num_slots', default=7, type=int, required=True,
+                    help='Number of slots in frozen model.')
 parser.add_argument('--num_iterations', default=3, type=int,
                     help='Number of attention iterations.')
 parser.add_argument('--hid_dim', default=64, type=int,
@@ -81,14 +81,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Load your model
 resolution = (128, 128)
 frozen_model = SlotAttentionAutoEncoder(
-    resolution, opt.num_slots, opt.num_iterations, opt.hid_dim, cnn_depth=opt.cnn_depth,
+    resolution, opt.base_num_slots, opt.num_iterations, opt.hid_dim, cnn_depth=opt.cnn_depth,
     use_trfmr=opt.use_trfmr, use_transformer_encoder=opt.use_trfmr_encoder, use_transformer_decoder=opt.use_trfmr_decoder).to(device)
 frozen_model.load_state_dict(torch.load(opt.model_path)['model_state_dict'])
 frozen_model.eval()
 
 # Initialize a new model
 model = Transformer(emb_size=opt.hid_dim, depth=4, heads=8,
-                    mlp_dim=512, max_seq_length=opt.num_slots).to(device)
+                    mlp_dim=512, max_seq_length=opt.base_num_slots).to(device)
 
 train_set = CLEVR('train')
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
@@ -103,12 +103,11 @@ criterion = nn.MSELoss()
 # Make results folder (holds all experiment subfolders)
 os.makedirs(opt.results_dir, exist_ok=True)
 experiment_index = len(glob(f"{opt.results_dir}/*"))
-# model_string_name = opt.model.replace("/", "-")
 # Create an experiment folder
 model_filename = f"{experiment_index:03d}-{opt.finetuned_model_name}"
 # Setup WandB
 wandb.init(dir=os.path.abspath(opt.results_dir), project=f"{opt.finetuned_model_name}_{opt.dataset_name}", name=model_filename,
-           config=opt, job_type='train', mode='online')  # mode='offline'
+           config=opt, job_type='train', mode='online')
 
 start = time.time()
 i = 0

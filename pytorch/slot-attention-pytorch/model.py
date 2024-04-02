@@ -123,7 +123,6 @@ class SlotTransformer(nn.Module):
                 slots = transformer(inputs, inputs, slots)
 
         if self.use_transformer_decoder:
-            # Assuming the slots can directly be treated as decoder inputs
             slots = self.token_decoder(slots)
 
         return slots
@@ -259,9 +258,6 @@ class EncoderCNN(nn.Module):
         self.conv1 = nn.Conv2d(3, hid_dim, 5, padding=2)
         self.layers = nn.ModuleList(
             [nn.Conv2d(hid_dim, hid_dim, 5, padding=2) for i in range(depth-1)])
-        # self.conv2 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
-        # self.conv3 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
-        # self.conv4 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.encoder_pos = SoftPositionEmbed(hid_dim, resolution)
 
     def forward(self, x):
@@ -269,12 +265,6 @@ class EncoderCNN(nn.Module):
         x = F.relu(x)
         for layer in self.layers:
             x = F.relu(layer(x))
-        # x = self.conv2(x)
-        # x = F.relu(x)
-        # x = self.conv3(x)
-        # x = F.relu(x)
-        # x = self.conv4(x)
-        # x = F.relu(x)
         x = x.permute(0, 2, 3, 1)
         x = self.encoder_pos(x)
         x = torch.flatten(x, 1, 2)
@@ -338,18 +328,6 @@ class SlotAttentionAutoEncoder(nn.Module):
         self.num_iterations = num_iterations
         self.cnn_depth = cnn_depth
 
-        # if pre_trained_model:
-        #     self.encoder = pre_trained_model.encoder
-        #     self.fc1 = pre_trained_model.fc1
-        #     self.fc2 = pre_trained_model.fc2
-        #     self.decoder = pre_trained_model.decoder
-        #     self.slot_attention = pre_trained_model.slot_attention
-        #     self.slot_attention = SlotAttention(
-        #         num_slots=num_slots-1, dim=slot_dim, iters=num_iterations, eps=1e-8, hidden_dim=hid_dim
-        #     )
-        #     # Freeze the components from the pre-trained model
-        #     self.freeze_model(pre_trained_model)
-        # else:
         self.encoder = EncoderCNN(
             self.resolution, self.hid_dim, depth=self.cnn_depth)
         self.decoder = DecoderCNN(self.hid_dim, self.resolution)
