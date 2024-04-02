@@ -133,8 +133,7 @@ for epoch in range(opt.num_epochs):
         image = sample['image'].to(device)
         z = frozen_model.encode(image)
         slots_k = frozen_model.slot_attention(z)
-        slots_kminus1 = slots_k[:, :-1, :]
-        slots_k_recons = model(slots_kminus1)
+        slots_k_recons = model(slots_k)
         loss = criterion(slots_k, slots_k_recons)
         total_loss += loss.item()
 

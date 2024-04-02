@@ -50,9 +50,17 @@ class Transformer(nn.Module):
             emb_size=emb_size, depth=depth, heads=heads, mlp_dim=mlp_dim, max_seq_length=max_seq_length)
         self.decoder = TokenDecoder(
             emb_size=emb_size, depth=depth, heads=heads, mlp_dim=mlp_dim, max_seq_length=max_seq_length)
+        # trainable token to append back to sequence
+        self.trainable_token = nn.Parameter(torch.randn(1, 1, emb_size))
 
     def forward(self, x):
-        return self.decoder(self.encoder(x))
+        # encode
+        z = self.encoder(x)
+        # remove last token and replace it with the trainable token. output of shape (B, emb_size)
+        new_slots = self.trainable_token.repeat(z.shape[0], 1, 1).squeeze(1)
+        z[:, -1, :] = new_slots
+        # now decode
+        return self.decoder(z)
 
     def encode(self, x):
         return self.encoder(x)
