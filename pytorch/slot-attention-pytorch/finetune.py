@@ -42,6 +42,8 @@ parser.add_argument('--model_path', type=str, required=True,
                     help='Path to the pre-trained model checkpoint')
 parser.add_argument('--finetuned_model_name', type=str, required=True,
                     help='Name of the finetuned model')
+parser.add_argument('--base_is_finetuned', default=False, type=bool,
+                    help='Whether the base model is finetuned.')
 parser.add_argument('--dataset_name', default='CLEVR',
                     type=str, help='dataset')
 parser.add_argument('--batch_size', type=int, default=16,
@@ -80,10 +82,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load your model
 resolution = (128, 128)
-frozen_model = SlotAttentionAutoEncoder(
-    resolution, opt.base_num_slots, opt.num_iterations, opt.hid_dim, cnn_depth=opt.cnn_depth,
-    use_trfmr=opt.use_trfmr, use_transformer_encoder=opt.use_trfmr_encoder, use_transformer_decoder=opt.use_trfmr_decoder).to(device)
-frozen_model.load_state_dict(torch.load(opt.model_path)['model_state_dict'])
+if opt.base_is_finetuned:
+    frozen_model = FineTunedSlotAttentionAutoEncoder(
+        resolution, opt.base_num_slots, opt.num_iterations, opt.hid_dim, cnn_depth=opt.cnn_depth,
+        use_trfmr=opt.use_trfmr, use_transformer_encoder=opt.use_trfmr_encoder, use_transformer_decoder=opt.use_trfmr_decoder).to(device)
+else:
+    frozen_model = SlotAttentionAutoEncoder(
+        resolution, opt.base_num_slots, opt.num_iterations, opt.hid_dim, cnn_depth=opt.cnn_depth,
+        use_trfmr=opt.use_trfmr, use_transformer_encoder=opt.use_trfmr_encoder, use_transformer_decoder=opt.use_trfmr_decoder).to(device)
+frozen_model.load_state_dict(torch.load(opt.model_path)[
+                             'model_state_dict'], strict=False)
 frozen_model.eval()
 
 # Initialize a new model
@@ -132,7 +140,7 @@ for epoch in range(opt.num_epochs):
         image = sample['image'].to(device)
         z = frozen_model.encode(image)
         slots_k = frozen_model.slot_attention(z)
-        slots_k_recons = model(slots_k)
+        slots_k_recons = model(image)
         loss = criterion(slots_k, slots_k_recons)
         total_loss += loss.item()
 

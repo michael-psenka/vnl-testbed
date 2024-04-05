@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from model import SlotAttentionAutoEncoder
 
 # standard transformer encoder/decoder using torch.nn
 
@@ -67,3 +67,24 @@ class Transformer(nn.Module):
 
     def decode(self, z):
         return self.decoder(z)
+
+
+class FineTunedSlotAttentionAutoEncoder(SlotAttentionAutoEncoder):
+    def __init__(self, resolution, base_num_slots, num_iterations, hid_dim, cnn_depth=None, use_trfmr=False, use_transformer_encoder=False, use_transformer_decoder=False):
+        super(FineTunedSlotAttentionAutoEncoder, self).__init__(resolution, base_num_slots,
+                                                                num_iterations, hid_dim, cnn_depth, use_trfmr, use_transformer_encoder, use_transformer_decoder)
+        self.transformer = Transformer(
+            emb_size=hid_dim, depth=4, heads=8, mlp_dim=512, max_seq_length=base_num_slots)
+
+    def forward(self, x):
+        z = self.encode(x)
+        slots_k = self.slot_attention(z)
+        slots_k_recons = self.transformer(slots_k)
+
+        return slots_k_recons
+
+    # def load_state_dict(self, state_dict, strict=False):
+        # Load the base model weights, ignoring missing keys
+        # super(FineTunedSlotAttentionAutoEncoder, self).load_state_dict(
+        #     state_dict, strict=strict)
+        # load the state dict
