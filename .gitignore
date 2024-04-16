@@ -12,6 +12,9 @@ raw
 # figure images
 *.png
 
+# temp files
+pytorch/slot-attention-pytorch/tmp
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
