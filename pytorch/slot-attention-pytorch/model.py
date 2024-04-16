@@ -424,3 +424,104 @@ class SlotAttentionAutoEncoder(nn.Module):
         # `recon_combined` has shape: [batch_size, width, height, num_channels].
 
         return recon_combined, recons, masks, slots
+
+
+
+class TokenCompressionAutoencoder(nn.Module):
+    def __init__(self, emb_size=256, depth=4, heads=8, mlp_dim=512, max_seq_length=7):
+        super().__init__()
+        self.encoder = TokenEncoder(
+            emb_size=emb_size, depth=depth, heads=heads, mlp_dim=mlp_dim, max_seq_length=max_seq_length)
+        self.decoder = TokenDecoder(
+            emb_size=emb_size, depth=depth, heads=heads, mlp_dim=mlp_dim, max_seq_length=max_seq_length)
+        # trainable token to append back to sequence
+        self.trainable_token = nn.Parameter(torch.randn(1, 1, emb_size))
+
+    def forward(self, x):
+        # encode
+        z = self.encoder(x)
+        # remove last token and replace it with the trainable token. output of shape (B, emb_size)
+        new_slots = self.trainable_token.repeat(z.shape[0], 1, 1).squeeze(1)
+        z[:, -1, :] = new_slots
+        # now decode
+        return self.decoder(z)
+
+    def encode(self, x):
+        return self.encoder(x)[:,:-1,:]
+
+    def decode(self, z):
+        z = torch.cat([z, self.trainable_token.repeat(z.shape[0], 1, 1)], dim=1)
+        return self.decoder(z)
+    
+
+# full model. first runs normal slot attention, then trains downstream token compressor models
+
+class SlotAttentionCompressionAutoencoder(nn.Module):
+    def __init__(self, slot_attention_autoencoder: SlotAttentionAutoEncoder, num_slots: int = 7):
+
+        super().__init__()
+        self.slot_attention_autoencoder = slot_attention_autoencoder
+        # list of token compressors, each reduces number of tokens by 1
+        self.token_compressor = [TokenCompressionAutoencoder(emb_size=256, depth=4, heads=8, mlp_dim=512, max_seq_length=num_slots) for _ in range(num_slots-1)]
+
+
+    # this will go through the entire, full antoencoding. note this is rarely used in training,
+    # see forward_step
+    def forward(self, x):
+        # first run the encoding from slot attention
+        z = self.slot_attention_autoencoder.encode(x)
+        z = self.slot_attention_autoencoder.slot_att(z)
+
+        # run through token compressors
+        for i in range(len(self.token_compressor)):
+            z = self.token_compressor[i].encode(z)
+
+        # now run through decoders
+        for i in range(len(self.token_compressor)-1, -1, -1):
+            z = self.token_compressor[i].decode(z)
+
+        x_hat = self.slot_attention_autoencoder.decode(z, x.shape[0])
+
+        return x_hat
+    
+
+    # forward_step will be mostly used during training. Only runs the encoding/decoding process
+    # at a certain step. Expects input from previous step. For example, at step 0, input is 
+    # original data just runs normal slot attention. at step 1, input is the slot attention 
+    # features, and output is reconstruction for the first token compressor
+
+    def forward_step(self, z, step: int):
+        if step == 0:
+            x_hat, _, _, _ = self.slot_attention_autoencoder(z)
+            return x_hat
+
+        else:
+            x_hat = self.token_compressor[step-1](z)
+            return x_hat
+
+    # encode_step will do a single step of the encoding. for example, if step 0, will run
+    # normal slot attention encoding. if step 1, expects slot attention features, returns
+    # encoding through first token compressor
+    def encode_step(self, z, step: int):
+        if step == 0:
+            z = self.slot_attention_autoencoder.encode(z)
+            return self.slot_attention_autoencoder.slot_att(z)
+        else:
+            return self.token_compressor[step-1].encode(z)
+    
+    # encode_full will return a list of features at all fidelities. Note this is rarely
+    # if ever used in actual training
+    def encode_full(self, x):
+
+        features_full = []
+
+        # run through token compressors
+        for i in range(self.num_slots):
+            z = self.encode_step(z, i)
+            features_full.append(z.detach().clone())
+
+        return features_full
+
+
+
+
