@@ -92,6 +92,8 @@ for model_depth in range(opt.num_slots):
 
     start = time.time()
     i = 0
+
+    # INNER LOOP: training the current step of the model
     for epoch in range(opt.num_epochs):
         model.train()
 
@@ -138,14 +140,18 @@ for model_depth in range(opt.num_slots):
     # the currently trained encoder
 
     # we want to replace the dataloader with the compressed data
-    z_new = []
-    for z in train_dataloader:
-        if model_depth == 0:
-            z = z['image'].to(device)
-        z_fwd = model.forward_step(z, model_depth)
-        z_new.append(z_fwd)
+    with torch.no_grad():
+        model.eval()
+        z_new = []
+        for z in train_dataloader:
+            if model_depth == 0:
+                z = z['image'].to(device)
+            z_fwd = model.forward_step(z, model_depth).detach().clone()
+            z_new.append(z_fwd)
 
-    z_new = torch.cat(z_new, dim=0)
+        z_new = torch.cat(z_new, dim=0)
+        model.train()
+
     train_set = torch.utils.data.TensorDataset(z_new)
     train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
                                                     shuffle=True, num_workers=opt.num_workers)
