@@ -75,7 +75,7 @@ model_slotattention = SlotAttentionAutoEncoder(
     use_trfmr=opt.use_trfmr, use_transformer_encoder=opt.use_trfmr_encoder, use_transformer_decoder=opt.use_trfmr_decoder).to(device)
 
 model = SlotAttentionCompressionAutoencoder(
-    model_slotattention, opt.num_slots).to(device)
+    model_slotattention, opt.num_slots, opt.hid_dim).to(device)
 
 if opt.loaded_model:
     model.load_state_dict(torch.load(
@@ -89,10 +89,13 @@ criterion = nn.MSELoss()
 params = [{'params': model.parameters()}]
 optimizer = optim.Adam(params, lr=opt.learning_rate)
 
+ablated_indices = set()
 
 # OUTER LOOP: number of slots we have currently compressed to
 
 for model_depth in range(opt.num_slots):
+    if model_depth in ablated_indices:
+        continue
 
     start = time.time()
     i = 0
@@ -102,6 +105,7 @@ for model_depth in range(opt.num_slots):
         model.train()
 
         total_loss = 0
+        # z_new = []
 
         for z in tqdm(train_dataloader):
             i += 1
@@ -118,9 +122,18 @@ for model_depth in range(opt.num_slots):
 
             if model_depth == 0:
                 z = z['image'].to(device)
-
+            else:
+                # print("HERE")
+                # print(z.is_cuda)
+                z = z.to(device)
+                # print(z.is_cuda)
+                print(z.device)
+                # for name, param in model.named_parameters():
+                #     print(f"{name} device: {param.device}")
+            # print(z.shape)
             # reconstruction of current feature
             z_hat = model.forward_step(z, model_depth)
+            # z_new.append(z.cpu())
             loss = criterion(z_hat, z)
             total_loss += loss.item()
 
@@ -143,20 +156,28 @@ for model_depth in range(opt.num_slots):
     # the currently trained encoder
 
     # we want to replace the dataloader with the compressed data
+    print("load compressed data")
     with torch.no_grad():
         model.eval()
         z_new = []
+        i = 0
         for z in train_dataloader:
+            if i == 2:  # DEBUG
+                break
             if model_depth == 0:
                 z = z['image'].to(device)
-            z_fwd = model.forward_step(z, model_depth).detach().clone()
+            else:
+                z = z.to(device)
+            z_fwd = model.get_compressed(z, model_depth).detach().clone()
             z_new.append(z_fwd)
+            i += 1
 
-        z_new = torch.cat(z_new, dim=0)
+        z_new = torch.cat(z_new, dim=0).cpu()
         model.train()
+        model.to(device)
 
-    train_set = torch.utils.data.TensorDataset(z_new)
-    train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
+    # train_set = torch.utils.data.TensorDataset(z_new)
+    train_dataloader = torch.utils.data.DataLoader(z_new, batch_size=opt.batch_size,
                                                    shuffle=True, num_workers=opt.num_workers)
 
 

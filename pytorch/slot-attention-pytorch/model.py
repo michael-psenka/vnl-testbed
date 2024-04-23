@@ -443,7 +443,8 @@ class TokenCompressionAutoencoder(nn.Module):
         new_slots = self.trainable_token.repeat(z.shape[0], 1, 1).squeeze(1)
         z[:, -1, :] = new_slots
         # now decode and add skip connection
-        return self.decoder(z)  # + x
+        z = self.decoder(z)  # + x
+        return z
 
     def encode(self, x):
         return self.encoder(x)[:, :-1, :]
@@ -457,13 +458,13 @@ class TokenCompressionAutoencoder(nn.Module):
 # full model. first runs normal slot attention, then trains downstream token compressor models
 
 class SlotAttentionCompressionAutoencoder(nn.Module):
-    def __init__(self, slot_attention_autoencoder: SlotAttentionAutoEncoder, num_slots: int = 7):
+    def __init__(self, slot_attention_autoencoder: SlotAttentionAutoEncoder, num_slots: int = 7, hid_dim: int = 256):
 
         super().__init__()
         self.slot_attention_autoencoder = slot_attention_autoencoder
         # list of token compressors, each reduces number of tokens by 1
         self.token_compressor = [TokenCompressionAutoencoder(
-            emb_size=256, depth=4, heads=8, mlp_dim=512, max_seq_length=num_slots) for _ in range(num_slots-1)]
+            emb_size=hid_dim, depth=4, heads=8, mlp_dim=512, max_seq_length=num_slots) for _ in range(num_slots-1)]
 
     # this will go through the entire, full antoencoding. note this is rarely used in training,
     # see forward_step
@@ -499,9 +500,21 @@ class SlotAttentionCompressionAutoencoder(nn.Module):
             x_hat = self.token_compressor[step-1](z)
             return x_hat
 
+    # Used for inference when we want the current fowarded representations to be the next data input
+    # Notice how we encode and decode the token compressor since we want to get the output representations
+
+    def get_compressed(self, z, step: int):
+        if step == 0:
+            z = self.slot_attention_autoencoder.encode(z)
+            return self.slot_attention_autoencoder.slot_att(z)
+        else:
+            return self.token_compressor[step-1](z)
+
     # encode_step will do a single step of the encoding. for example, if step 0, will run
     # normal slot attention encoding. if step 1, expects slot attention features, returns
     # encoding through first token compressor
+    # Notice how we encode and decode the token compressor since we want to get the output representations
+
     def encode_step(self, z, step: int):
         if step == 0:
             z = self.slot_attention_autoencoder.encode(z)
