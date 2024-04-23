@@ -105,9 +105,13 @@ for model_depth in range(opt.num_slots):
         model.train()
 
         total_loss = 0
-        # z_new = []
-
+        max_samples = 100 if len(
+            train_dataloader) > 100 else len(train_dataloader)
+        idx = 0
         for z in tqdm(train_dataloader):
+            if idx >= max_samples:
+                break
+            idx += 1
             i += 1
 
             if i < opt.warmup_steps:
@@ -123,17 +127,9 @@ for model_depth in range(opt.num_slots):
             if model_depth == 0:
                 z = z['image'].to(device)
             else:
-                # print("HERE")
-                # print(z.is_cuda)
                 z = z.to(device)
-                # print(z.is_cuda)
-                print(z.device)
-                # for name, param in model.named_parameters():
-                #     print(f"{name} device: {param.device}")
-            # print(z.shape)
             # reconstruction of current feature
             z_hat = model.forward_step(z, model_depth)
-            # z_new.append(z.cpu())
             loss = criterion(z_hat, z)
             total_loss += loss.item()
 
@@ -141,10 +137,7 @@ for model_depth in range(opt.num_slots):
             loss.backward()
             optimizer.step()
 
-            if i == 100:
-                break
-
-        total_loss /= len(train_dataloader)
+        total_loss /= max_samples
 
         if opt.wandb:
             wandb.log({'loss': total_loss}, step=epoch)
@@ -156,25 +149,24 @@ for model_depth in range(opt.num_slots):
     # the currently trained encoder
 
     # we want to replace the dataloader with the compressed data
-    print("load compressed data")
     with torch.no_grad():
         model.eval()
         z_new = []
-        i = 0
+        idx = 0
+        max_samples = 100 if len(
+            train_dataloader) > 100 else len(train_dataloader)
         for z in train_dataloader:
-            if i == 2:  # DEBUG
+            if idx >= max_samples:
                 break
+            idx += 1
             if model_depth == 0:
                 z = z['image'].to(device)
             else:
                 z = z.to(device)
             z_fwd = model.get_compressed(z, model_depth).detach().clone()
             z_new.append(z_fwd)
-            i += 1
 
         z_new = torch.cat(z_new, dim=0).cpu()
-        model.train()
-        model.to(device)
 
     # train_set = torch.utils.data.TensorDataset(z_new)
     train_dataloader = torch.utils.data.DataLoader(z_new, batch_size=opt.batch_size,

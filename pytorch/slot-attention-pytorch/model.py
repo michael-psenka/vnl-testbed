@@ -463,8 +463,8 @@ class SlotAttentionCompressionAutoencoder(nn.Module):
         super().__init__()
         self.slot_attention_autoencoder = slot_attention_autoencoder
         # list of token compressors, each reduces number of tokens by 1
-        self.token_compressor = [TokenCompressionAutoencoder(
-            emb_size=hid_dim, depth=4, heads=8, mlp_dim=512, max_seq_length=num_slots) for _ in range(num_slots-1)]
+        self.token_compressor = nn.ModuleList([TokenCompressionAutoencoder(
+            emb_size=hid_dim, depth=4, heads=8, mlp_dim=512, max_seq_length=num_slots) for _ in range(num_slots-1)])
 
     # this will go through the entire, full antoencoding. note this is rarely used in training,
     # see forward_step
