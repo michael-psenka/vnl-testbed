@@ -51,22 +51,16 @@ parser.add_argument('--use_trfmr_decoder', default=False, type=bool,
                     help='use transformer decoder in slot attention')
 parser.add_argument('--notes', type=str,
                     help='describe the change of this model')
-
+parser.add_argument('--ablated_indices', nargs='*', type=int,
+                    help='number of layers to ablate')
+parser.add_argument('--max_samples', default=1000, type=int,
+                    help='max samples')
 parser.add_argument('--wandb', action='store_true',
                     help='whether to use wandb')
 
 
 opt = parser.parse_args()
 resolution = (128, 128)
-# {opt.model_name}_{opt.dataset_name}
-# Make results folder (holds all experiment subfolders)
-os.makedirs(opt.results_dir, exist_ok=True)
-experiment_index = len(glob(f"{opt.results_dir}/*"))
-# Create an experiment folder
-model_filename = f"{experiment_index:03d}-{opt.model_name}-slots-{opt.num_slots}"
-if opt.wandb:
-    wandb.init(dir=os.path.abspath(opt.results_dir), project='slot_att_pretrained', name=model_filename,
-               config=opt, job_type='train', mode='online', notes=opt.notes)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -89,13 +83,27 @@ criterion = nn.MSELoss()
 params = [{'params': model.parameters()}]
 optimizer = optim.Adam(params, lr=opt.learning_rate)
 
-ablated_indices = set()
-
+ablated_indices = set(opt.ablated_indices) if opt.ablated_indices else set()
+max_samples = opt.max_samples if len(
+    train_dataloader) > opt.max_samples else len(train_dataloader)
 # OUTER LOOP: number of slots we have currently compressed to
 
 for model_depth in range(opt.num_slots):
     if model_depth in ablated_indices:
         continue
+
+    # Make results folder (holds all experiment subfolders)
+    os.makedirs(opt.results_dir, exist_ok=True)
+    experiment_index = len(glob(f"{opt.results_dir}/*"))
+    model_filename = f"{experiment_index:03d}-{opt.model_name}-slots{opt.num_slots}-layer{opt.num_slots-model_depth}-{opt.notes}"
+
+    torch.save({
+        'model_state_dict': model.state_dict(),
+    }, opt.results_dir + f"/{model_filename}.ckpt")
+    opt.index = experiment_index
+    if opt.wandb:
+        wandb.init(dir=os.path.abspath(opt.results_dir), project=f"slot_att_pretrained", name=model_filename,
+                   config=opt, job_type='train', mode='online', notes=opt.notes)
 
     start = time.time()
     i = 0
@@ -105,8 +113,6 @@ for model_depth in range(opt.num_slots):
         model.train()
 
         total_loss = 0
-        max_samples = 100 if len(
-            train_dataloader) > 100 else len(train_dataloader)
         idx = 0
         for z in tqdm(train_dataloader):
             if idx >= max_samples:
@@ -153,8 +159,6 @@ for model_depth in range(opt.num_slots):
         model.eval()
         z_new = []
         idx = 0
-        max_samples = 100 if len(
-            train_dataloader) > 100 else len(train_dataloader)
         for z in train_dataloader:
             if idx >= max_samples:
                 break
@@ -171,8 +175,17 @@ for model_depth in range(opt.num_slots):
     # train_set = torch.utils.data.TensorDataset(z_new)
     train_dataloader = torch.utils.data.DataLoader(z_new, batch_size=opt.batch_size,
                                                    shuffle=True, num_workers=opt.num_workers)
+    # if model_depth == 0:
+    #     for param in model.slot_attention_autoencoder.parameters():
+    #         param.requires_grad = False
+    # else:
+    #     for param in model.token_compressor[model_depth-1].parameters():
+    #         param.requires_grad = False
 
+    # break
+    if opt.wandb:
+        wandb.finish()
 
-torch.save({
-    'model_state_dict': model.state_dict(),
-}, opt.results_dir + f"/{model_filename}.ckpt")
+    torch.save({
+        'model_state_dict': model.state_dict(),
+    }, opt.results_dir + f"/{model_filename}.ckpt")

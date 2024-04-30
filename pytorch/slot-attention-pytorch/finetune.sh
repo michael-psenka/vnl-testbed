@@ -1,4 +1,4 @@
-python train_tokencompressor.py --batch_size 20 --num_slots 3 --num_epochs 100 --results_dir /shared/rzhang/slot_att/results/full-token-compressor --wandb # --notes "adding skip connections for more information carryover"
+python train_tokencompressor.py --batch_size 32 --num_slots 7 --num_epochs 50 --max_samples 1000 --results_dir /shared/rzhang/slot_att/results/full-token-compressor --wandb --notes ""
 # python train_tokencompressor.py --num_slots 7 --num_epochs 1000 --results_dir /shared/rzhang/slot_att/results/full-token-compressor --wandb
 # python finetune.py --base_num_slots 7 --num_epochs 1000 --results_dir /shared/rzhang/slot_att/results/slots6-freeze7 --model_path="/shared/rzhang/slot_att/results/007-objects-all-slots-7.ckpt" --finetuned_model_name="slots6-freeze7"
 # python finetune.py --base_is_finetuned True --base_num_slots 6 --num_epochs 1000 --results_dir /shared/rzhang/slot_att/results/slots5-freeze6 --model_path="/shared/rzhang/slot_att/results/slots6-freeze7/005-slots6-freeze7.ckpt" --finetuned_model_name="slots5-freeze6"

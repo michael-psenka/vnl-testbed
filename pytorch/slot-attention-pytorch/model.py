@@ -469,22 +469,30 @@ class SlotAttentionCompressionAutoencoder(nn.Module):
     # this will go through the entire, full antoencoding. note this is rarely used in training,
     # see forward_step
 
-    def forward(self, x):
+    def forward(self, x, upto: int = None):
+        # print('here')
+        # recon_combined, recons, masks, slots = self.slot_attention_autoencoder(
+        #     x)
+        if upto is None:
+            upto = len(self.token_compressor)
         # first run the encoding from slot attention
         z = self.slot_attention_autoencoder.encode(x)
         z = self.slot_attention_autoencoder.slot_att(z)
 
         # run through token compressors
-        for i in range(len(self.token_compressor)):
+        # for i in range(len(self.token_compressor)):
+        for i in range(upto):
             z = self.token_compressor[i].encode(z)
 
         # now run through decoders
-        for i in range(len(self.token_compressor)-1, -1, -1):
+        # for i in range(len(self.token_compressor)-1, -1, -1):
+        for i in range(upto-1, -1, -1):
             z = self.token_compressor[i].decode(z)
 
-        x_hat = self.slot_attention_autoencoder.decode(z, x.shape[0])
+        recon_combined, recons, masks, slots = self.slot_attention_autoencoder.decode(
+            z, x.shape[0])
 
-        return x_hat
+        return recon_combined, recons, masks, slots
 
     # forward_step will be mostly used during training. Only runs the encoding/decoding process
     # at a certain step. Expects input from previous step. For example, at step 0, input is
