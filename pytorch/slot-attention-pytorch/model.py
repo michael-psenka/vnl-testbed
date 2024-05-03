@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from collections import defaultdict
 from sklearn.cluster import AgglomerativeClustering
 
+import geoopt
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -425,6 +427,17 @@ class SlotAttentionAutoEncoder(nn.Module):
 
         return recon_combined, recons, masks, slots
 
+class TokenCompressor(nn.Module):
+    def __init__(self, emb_size=256, depth=4, heads=8, mlp_dim=512, max_seq_length=7):
+        super().__init__()
+        self.encoder = TokenEncoder(
+            emb_size=emb_size, depth=depth, heads=heads, mlp_dim=mlp_dim, max_seq_length=max_seq_length)
+        
+
+    def forward(self, x):
+        # encode
+        z = self.encoder(x)[:,:-1,:]
+        return z
 
 class TokenCompressionAutoencoder(nn.Module):
     def __init__(self, emb_size=256, depth=4, heads=8, mlp_dim=512, max_seq_length=7):
@@ -532,7 +545,98 @@ class SlotAttentionCompressionAutoencoder(nn.Module):
 
     # encode_full will return a list of features at all fidelities. Note this is rarely
     # if ever used in actual training
-    def encode_full(self, x):
+    def encode_full(self, z):
+
+        features_full = []
+
+        # run through token compressors
+        for i in range(self.num_slots):
+            z = self.encode_step(z, i)
+            features_full.append(z.detach().clone())
+
+        return features_full
+
+
+# NEW FULL MODEL: now reconstruction goes all the way back to the original data
+class SlotAttentionCompressionAutoencoderDirect(nn.Module):
+    def __init__(self, slot_attention_autoencoder: SlotAttentionAutoEncoder, num_slots: int = 7, hid_dim: int = 256):
+
+        super().__init__()
+        # right now, there is only one decoder throughout the model. this can be changed
+        self.slot_attention_autoencoder = slot_attention_autoencoder
+        # list of token compressors, each reduces number of tokens by 1
+        self.token_compressor = nn.ModuleList([TokenCompressor(
+            emb_size=hid_dim, depth=4, heads=8, mlp_dim=512, max_seq_length=num_slots) for _ in range(num_slots-1)])
+        
+        
+
+    # this will go through the entire, full antoencoding. note this is rarely used in training,
+    # see forward_step
+
+    def forward(self, x, upto: int = None):
+        # print('here')
+        # recon_combined, recons, masks, slots = self.slot_attention_autoencoder(
+        #     x)
+        if upto is None:
+            upto = len(self.token_compressor)
+        # first run the encoding from slot attention
+        z = self.slot_attention_autoencoder.encode(x)
+        z = self.slot_attention_autoencoder.slot_att(z)
+
+        # run through token compressors
+        # for i in range(len(self.token_compressor)):
+        for i in range(upto):
+            z = self.token_compressor[i](z)
+
+        # decode now goes straight from tokens to image
+
+        recon_combined, recons, masks, slots = self.slot_attention_autoencoder.decode(
+            z, x.shape[0])
+
+        return recon_combined, recons, masks, slots
+
+    # forward_step will be mostly used during training. Only runs the encoding/decoding process
+    # at a certain step. Expects input from previous step. For example, at step 0, input is
+    # original data just runs normal slot attention. at step 1, input is the slot attention
+    # features, and output is reconstruction for the first token compressor
+
+    def forward_step(self, z, step: int):
+        if step == 0:
+            x_hat, _, _, _ = self.slot_attention_autoencoder(z)
+            return x_hat
+
+        else:
+            z_km1 = self.token_compressor[step-1](z)
+            x_hat, _, _, _ = self.slot_attention_autoencoder.decode(z_km1, z.shape[0])
+            return x_hat
+
+    # Used for inference when we want the current fowarded representations to be the next data input
+    # Notice how we encode and decode the token compressor since we want to get the output representations
+
+    def get_compressed(self, z, step: int):
+        if step == 0:
+            z = self.slot_attention_autoencoder.encode(z)
+            return self.slot_attention_autoencoder.slot_att(z)
+        else:
+            z = self.token_compressor[step-1](z)
+            x_hat, _, _, _ = self.slot_attention_autoencoder.decode(z, z.shape[0])
+            return x_hat
+
+    # encode_step will do a single step of the encoding. for example, if step 0, will run
+    # normal slot attention encoding. if step 1, expects slot attention features, returns
+    # encoding through first token compressor
+    # Notice how we encode and decode the token compressor since we want to get the output representations
+
+    def encode_step(self, z, step: int):
+        if step == 0:
+            z = self.slot_attention_autoencoder.encode(z)
+            return self.slot_attention_autoencoder.slot_att(z)
+        else:
+            return self.token_compressor[step-1](z)
+
+    # encode_full will return a list of features at all fidelities. Note this is rarely
+    # if ever used in actual training
+    def encode_full(self, z):
 
         features_full = []
 
