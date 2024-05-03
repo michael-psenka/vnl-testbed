@@ -470,9 +470,6 @@ class SlotAttentionCompressionAutoencoder(nn.Module):
     # see forward_step
 
     def forward(self, x, upto: int = None):
-        # print('here')
-        # recon_combined, recons, masks, slots = self.slot_attention_autoencoder(
-        #     x)
         if upto is None:
             upto = len(self.token_compressor)
         # first run the encoding from slot attention

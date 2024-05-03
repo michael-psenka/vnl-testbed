@@ -95,7 +95,7 @@ for model_depth in range(opt.num_slots):
     # Make results folder (holds all experiment subfolders)
     os.makedirs(opt.results_dir, exist_ok=True)
     experiment_index = len(glob(f"{opt.results_dir}/*"))
-    model_filename = f"{experiment_index:03d}-{opt.model_name}-slots{opt.num_slots}-layer{opt.num_slots-model_depth}-{opt.notes}"
+    model_filename = f"{experiment_index:03d}-{opt.model_name}-slots{opt.num_slots}-{opt.notes}"
 
     torch.save({
         'model_state_dict': model.state_dict(),
