@@ -78,10 +78,10 @@ if opt.loaded_model:
 
 train_set = CLEVR('train')
 # create dummy features for first part of loop
-z_init = np.random.randn(len(train_set), 1)
-# TODO: combine train_set and z_init into train_dataloader through TensorDataset(train_set, z_init), may need
-# to conver train_set to explicit tensor first
-train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
+z_init = torch.ones(len(train_set)).to("cpu")
+z_dataloader = torch.utils.data.DataLoader(
+    z_init, batch_size=opt.batch_size, shuffle=True, num_workers=opt.num_workers)
+image_dataloader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
                                                shuffle=True, num_workers=opt.num_workers)
 
 criterion = nn.MSELoss()
@@ -90,7 +90,7 @@ optimizer = optim.Adam(params, lr=opt.learning_rate)
 
 ablated_indices = set(opt.ablated_indices) if opt.ablated_indices else set()
 max_samples = opt.max_samples if len(
-    train_dataloader) > opt.max_samples else len(train_dataloader)
+    image_dataloader) > opt.max_samples else len(image_dataloader)
 # OUTER LOOP: number of slots we have currently compressed to
 
 for model_depth in range(opt.num_slots):
@@ -102,13 +102,13 @@ for model_depth in range(opt.num_slots):
     experiment_index = len(glob(f"{opt.results_dir}/*"))
     model_filename = f"{experiment_index:03d}-{opt.model_name}-slots{opt.num_slots}-layer{opt.num_slots-model_depth}-{opt.notes}"
 
-    torch.save({
-        'model_state_dict': model.state_dict(),
-    }, opt.results_dir + f"/{model_filename}.ckpt")
     opt.index = experiment_index
     if opt.wandb:
         wandb.init(dir=os.path.abspath(opt.results_dir), project=f"slot_att_pretrained", name=model_filename,
                    config=opt, job_type='train', mode='online', notes=opt.notes)
+        torch.save({
+            'model_state_dict': model.state_dict(),
+        }, opt.results_dir + f"/{model_filename}.ckpt")
 
     start = time.time()
     i = 0
@@ -119,10 +119,8 @@ for model_depth in range(opt.num_slots):
 
         total_loss = 0
         idx = 0
-        # TODO: convert this loading to (x, z) in train_dataloader. Note if model_depth == 0,
-        # we do not use z at all and apply the model to x. If model_depth > 0, we apply the model to z
-        # and compare MSE against z
-        for z in tqdm(train_dataloader):
+        for x, z in tqdm(zip(image_dataloader, z_dataloader)):
+            x = x['image'].to(device)
             if idx >= max_samples:
                 break
             idx += 1
@@ -139,12 +137,12 @@ for model_depth in range(opt.num_slots):
             optimizer.param_groups[0]['lr'] = learning_rate
 
             if model_depth == 0:
-                z = z['image'].to(device)
+                z = x
             else:
                 z = z.to(device)
             # reconstruction of current feature
-            z_hat = model.forward_step(z, model_depth)
-            loss = criterion(z_hat, z)
+            x_hat = model.forward_step(z, model_depth)
+            loss = criterion(x_hat, x)
             total_loss += loss.item()
 
             optimizer.zero_grad()
@@ -167,14 +165,12 @@ for model_depth in range(opt.num_slots):
         model.eval()
         z_new = []
         idx = 0
-        # TODO: convert this loading to (x, z) in train_dataloader. Note if model_depth == 0,
-        # running from x. otherwise, running from z
-        for z in train_dataloader:
+        for x, z in tqdm(zip(image_dataloader, z_dataloader)):
             if idx >= max_samples:
                 break
             idx += 1
             if model_depth == 0:
-                z = z['image'].to(device)
+                z = x['image'].to(device)
             else:
                 z = z.to(device)
             z_fwd = model.get_compressed(z, model_depth).detach().clone()
@@ -182,20 +178,17 @@ for model_depth in range(opt.num_slots):
 
         z_new = torch.cat(z_new, dim=0).cpu()
 
-    # train_set = torch.utils.data.TensorDataset(z_new)
-    train_dataloader = torch.utils.data.DataLoader(TensorDataset(z_new, batch_size=opt.batch_size,
-                                                   shuffle=True, num_workers=opt.num_workers)
+    z_dataloader = torch.utils.data.DataLoader(
+        z_new, batch_size=opt.batch_size, shuffle=True, num_workers=opt.num_workers)
     # if model_depth == 0:
     #     for param in model.slot_attention_autoencoder.parameters():
     #         param.requires_grad = False
     # else:
     #     for param in model.token_compressor[model_depth-1].parameters():
     #         param.requires_grad = False
-
     # break
     if opt.wandb:
+        torch.save({
+            'model_state_dict': model.state_dict(),
+        }, opt.results_dir + f"/{model_filename}.ckpt")
         wandb.finish()
-
-    torch.save({
-        'model_state_dict': model.state_dict(),
-    }, opt.results_dir + f"/{model_filename}.ckpt")
