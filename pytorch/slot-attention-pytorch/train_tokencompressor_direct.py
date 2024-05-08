@@ -156,20 +156,18 @@ for model_depth in range(opt.num_slots):
 
         if opt.wandb:
             wandb.log({'loss': total_loss}, step=epoch)
+
             # log a plot of 10 sample images from the train set and their reconstructions
             # Define the number of samples to visualize
             first_batch_images = next(iter(image_dataloader))
             first_batch_images = first_batch_images['image']
-
             # Assuming that the batch size is at least as large as the number of samples you want to visualize
             sample_images = first_batch_images[:10].to(device)
-
+            # Note model.train() is already run before each loop
             model.eval()
             # Generate reconstructions at each depth
             depths_reconstructions = [model.reconstruction_to(sample_images, depth) for depth in range(model_depth+1)]
             plt = plot_samples(sample_images, depths_reconstructions)
-            
-            # Log to wandb
             wandb.log({"Reconstructions by Depth": wandb.Image(plt, caption=f"Epoch: {epoch + model_depth*opt.num_epochs}")}, step=epoch + model_depth*opt.num_epochs)
             plt.close()
 
