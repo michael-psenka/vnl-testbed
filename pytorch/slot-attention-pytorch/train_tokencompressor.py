@@ -115,6 +115,7 @@ for model_depth in range(opt.num_slots):
         total_loss = 0
         idx = 0
         for z in tqdm(train_dataloader):
+            print(type(z))
             if idx >= max_samples:
                 break
             idx += 1
