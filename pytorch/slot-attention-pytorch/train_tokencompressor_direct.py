@@ -11,6 +11,8 @@ from torch.utils.data import TensorDataset
 import wandb
 from glob import glob
 
+from utils.plotting import plot_samples
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
@@ -40,7 +42,7 @@ parser.add_argument('--decay_steps', default=100000, type=int,
                     help='Number of steps for the learning rate decay.')
 parser.add_argument('--num_workers', default=4, type=int,
                     help='number of workers for loading data')
-parser.add_argument('--num_epochs', default=1000, type=int,
+parser.add_argument('--num_epochs', default=200, type=int,
                     help='number of workers for loading data')
 parser.add_argument('--cnn_depth', default=4, type=int,
                     help='number of encoder layers')
@@ -77,6 +79,7 @@ if opt.loaded_model:
         f"/shared/rzhang/slot_att/tmp/{opt.loaded_model}.ckpt")['model_state_dict'])
 
 train_set = CLEVR('train')
+test_set = CLEVR('test')
 # create dummy features for first part of loop
 z_init = torch.ones(len(train_set)).to("cpu")
 z_dataloader = torch.utils.data.DataLoader(
@@ -114,12 +117,12 @@ for model_depth in range(opt.num_slots):
     i = 0
 
     # INNER LOOP: training the current step of the model
-    for epoch in range(opt.num_epochs):
+    for epoch in tqdm(range(opt.num_epochs)):
         model.train()
 
         total_loss = 0
         idx = 0
-        for x, z in tqdm(zip(image_dataloader, z_dataloader)):
+        for x, z in zip(image_dataloader, z_dataloader):
             x = x['image'].to(device)
             if idx >= max_samples:
                 break
@@ -153,6 +156,23 @@ for model_depth in range(opt.num_slots):
 
         if opt.wandb:
             wandb.log({'loss': total_loss}, step=epoch)
+            # log a plot of 10 sample images from the train set and their reconstructions
+            # Define the number of samples to visualize
+            first_batch_images = next(iter(image_dataloader))
+            first_batch_images = first_batch_images['image']
+
+            # Assuming that the batch size is at least as large as the number of samples you want to visualize
+            sample_images = first_batch_images[:10].to(device)
+
+            model.eval()
+            # Generate reconstructions at each depth
+            depths_reconstructions = [model.reconstruction_to(sample_images, depth) for depth in range(model_depth+1)]
+            plt = plot_samples(sample_images, depths_reconstructions)
+            
+            # Log to wandb
+            wandb.log({"Reconstructions by Depth": wandb.Image(plt, caption=f"Epoch: {epoch + model_depth*opt.num_epochs}")}, step=epoch + model_depth*opt.num_epochs)
+            plt.close()
+
 
         print("Epoch: {}, Loss: {}, Time: {}".format(epoch, total_loss,
                                                      datetime.timedelta(seconds=time.time() - start)))
