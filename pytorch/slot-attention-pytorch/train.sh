@@ -1,4 +1,6 @@
-python train_tokencompressor_direct.py --batch_size 32 --num_slots 7 --decay_type exp --num_epochs 200 --max_samples 1000 --results_dir /shared/rzhang/slot_att/results/full-token-compressor --notes "init-zero-slot-weights" --wandb
+# python train_tokencompressor_direct.py --batch_size 32 --num_slots 7 --decay_type exp --num_epochs 200 --results_dir /shared/rzhang/slot_att/results/full-token-compressor --notes "test-viz" --wandb
+python train_tokencompressor_direct.py --batch_size 32 --num_slots 7 --decay_type cosine --num_epochs 200 --results_dir /shared/rzhang/slot_att/results/full-token-compressor --notes "cosine-scheduler" --wandb
+# python train_tokencompressor_direct.py --batch_size 32 --num_slots 7 --decay_type exp --num_epochs 200 --results_dir /shared/rzhang/slot_att/results/full-token-compressor --notes "init-zero-slot-weights" --wandb
 # python train_tokencompressor.py --batch_size 32 --num_slots 7 --num_epochs 200 --max_samples 1000 --ablated_indices 1 3 5 --results_dir /shared/rzhang/slot_att/results/full-token-compressor --wandb --notes "ablated_indices_1_3_5"
 # python train_tokencompressor.py --num_slots 7 --num_epochs 1000 --results_dir /shared/rzhang/slot_att/results/full-token-compressor --wandb
 # python finetune.py --base_num_slots 7 --num_epochs 1000 --results_dir /shared/rzhang/slot_att/results/slots6-freeze7 --model_path="/shared/rzhang/slot_att/results/007-objects-all-slots-7.ckpt" --finetuned_model_name="slots6-freeze7"

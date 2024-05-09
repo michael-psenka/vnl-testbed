@@ -196,7 +196,7 @@ class SlotAttention(nn.Module):
 
         mu = self.slots_mu.expand(b, n_s, -1)
         sigma = self.slots_sigma.expand(b, n_s, -1)
-        slots = torch.normal(mu, sigma)
+        slots = torch.normal(mu, sigma)  # torch.zeros(mu.shape).to(device)  #
 
         inputs = self.norm_input(inputs)
         k, v = self.to_k(inputs), self.to_v(inputs)
@@ -591,6 +591,20 @@ class SlotAttentionCompressionAutoencoderDirect(nn.Module):
             x_hat, _, _, _ = self.slot_attention_autoencoder.decode(
                 z_km1, z.shape[0])
             return x_hat
+
+    # encode from image to depth "depth", then reconstruction
+
+    def reconstruction_to(self, x, depth: int):
+        z = self.slot_attention_autoencoder.encode(x)
+        z = self.slot_attention_autoencoder.slot_att(z)
+        for i in range(depth):
+            z = self.token_compressor[i](z)
+        x_hat, _, _, _ = self.slot_attention_autoencoder.decode(z, x.shape[0])
+
+        return x_hat
+
+    # Used for inference when we want the current fowarded representations to be the next data input
+    # Notice how we encode and decode the token compressor since we want to get the output representations
 
     def get_compressed(self, z, step: int):
         if step == 0:

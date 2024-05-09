@@ -11,6 +11,8 @@ import torch
 import wandb
 from glob import glob
 
+from utils.plotting import plot_samples
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -55,9 +57,10 @@ def parse_args():
                         help='describe the change of this model')
     parser.add_argument('--ablated_indices', nargs='*', type=int,
                         help='number of layers to ablate')
-    parser.add_argument('--max_samples', default=1000, type=int,
+    parser.add_argument('--max_samples', default=None, type=int,
                         help='max samples')
-    parser.add_argument('--decay_type', default='cosine', type=str,)
+    parser.add_argument('--decay_type', default='cosine', type=str)
+    parser.add_argument('--ckpt_epoch', default=10, type=int)
     parser.add_argument('--wandb', action='store_true',
                         help='whether to use wandb')
     return parser.parse_args()
@@ -77,11 +80,11 @@ def create_model(opt):
     return model
 
 
-def prepare_dataloader(batch_size, num_workers, max_samples=1000, train_set=None):
-    train_set = train_set if train_set is not None else torch.ones(
+def prepare_dataloader(batch_size, num_workers, dataset=None, max_samples=1000):
+    dataset = dataset if dataset is not None else torch.ones(
         max_samples).to("cpu")
     data_loader = DataLoader(
-        train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+        dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     return data_loader
 
 
@@ -94,20 +97,18 @@ def get_lr(step: int, total_steps: int, warmup_steps: int, lr: float, decay_type
             lr *= (1 + math.cos(math.pi * progress)) / 2
         elif decay_type == 'exp' and decay_rate is not None:
             lr *= decay_rate ** ((step - warmup_steps) / total_steps)
-
     return lr
 
 
 def train(opt):
     model = create_model(opt)
     train_set = CLEVR('train')
-    max_samples = min(opt.max_samples, len(train_set))
+    max_samples = opt.max_samples if opt.max_samples else len(train_set)
     image_dataloader = prepare_dataloader(
-        opt.batch_size, opt.num_workers, opt.max_samples, train_set)
+        opt.batch_size, opt.num_workers, train_set)
     z_dataloader = prepare_dataloader(
-        opt.batch_size, opt.num_workers, opt.max_samples)
+        opt.batch_size, opt.num_workers, max_samples=max_samples)
     criterion = nn.MSELoss()
-    params = [{'params': model.parameters()}]
     ablated_indices = set(opt.ablated_indices or [])
     # OUTER LOOP: number of slots we have currently compressed to
     for model_depth in range(opt.num_slots):
@@ -115,8 +116,8 @@ def train(opt):
             continue
 
         # Reset optimizer and scheduler for each model depth
-        optimizer = optim.Adam(params, lr=opt.learning_rate)
-        total_steps = opt.num_epochs * opt.max_samples
+        optimizer = optim.Adam(model.parameters(), lr=opt.learning_rate)
+        total_steps = opt.num_epochs * len(image_dataloader)
         scheduler = optim.lr_scheduler.LambdaLR(
             optimizer,
             lr_lambda=lambda step: get_lr(
@@ -139,11 +140,7 @@ def train(opt):
         for epoch in range(opt.num_epochs):
             model.train()
             total_loss = 0
-            idx = 0
-            for x, z in tqdm(zip(image_dataloader, z_dataloader), total=max_samples):
-                if idx >= max_samples:
-                    break
-                idx += 1
+            for x, z in tqdm(zip(image_dataloader, z_dataloader), total=len(z_dataloader)):
                 x = x['image'].to(device)
                 z = x if model_depth == 0 else z.to(device)
                 # reconstruction of current feature
@@ -156,11 +153,15 @@ def train(opt):
                 optimizer.step()
                 scheduler.step()
 
-            total_loss /= max_samples
+            total_loss /= len(z_dataloader)
 
             if opt.wandb:
                 wandb.log({'loss': total_loss}, step=epoch)
-
+            if epoch % opt.ckpt_epoch:
+                torch.save({
+                    'model_state_dict': model.state_dict(),
+                }, opt.results_dir + f"/{model_filename}.ckpt")
+              
             print("Epoch: {}, Loss: {}, Time: {}".format(epoch, total_loss,
                                                          datetime.timedelta(seconds=time.time() - start)))
 
@@ -171,11 +172,7 @@ def train(opt):
         z_new = []
         with torch.no_grad():
             model.eval()
-            idx = 0
             for x, z in zip(image_dataloader, z_dataloader):
-                if idx >= max_samples:
-                    break
-                idx += 1
                 z = x['image'].to(device) if model_depth == 0 else z.to(device)
                 z_fwd = model.get_compressed(
                     z, model_depth).detach().clone()
@@ -183,12 +180,29 @@ def train(opt):
             z_new = torch.cat(z_new, dim=0).cpu()
 
         z_dataloader = prepare_dataloader(
-            opt.batch_size, opt.num_workers, opt.max_samples, z_new)
+            opt.batch_size, opt.num_workers, z_new)
 
         if opt.wandb:
             torch.save({
                 'model_state_dict': model.state_dict(),
             }, opt.results_dir + f"/{model_filename}.ckpt")
+
+            # log a plot of 10 sample images from the train set and their reconstructions
+            # Define the number of samples to visualize
+            first_batch_images = next(iter(image_dataloader))
+            first_batch_images = first_batch_images['image']
+            # Assuming that the batch size is at least as large as the number of samples you want to visualize
+            n = opt.batch_size if opt.batch_size < 10 else 10
+            sample_images = first_batch_images[:n].to(device)
+            # Note model.train() is already run before each loop
+            model.eval()
+            # Generate reconstructions at each depth
+            depths_reconstructions = [model.reconstruction_to(
+                sample_images, depth) for depth in range(model_depth+1)]
+            plt = plot_samples(sample_images, depths_reconstructions)
+            wandb.log({"Reconstructions by Depth": wandb.Image(
+                plt, caption=f"Epoch: {epoch + model_depth*opt.num_epochs}")}, step=epoch + model_depth*opt.num_epochs)
+            plt.close()
             wandb.finish()
 
 
