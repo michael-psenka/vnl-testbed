@@ -92,14 +92,15 @@ def prepare_dataloader(batch_size, num_workers, dataset=None, max_samples=1000):
 
 def get_lr(step: int, total_steps: int, warmup_steps: int, lr: float, decay_type: str, decay_rate: float = None):
     if step < warmup_steps:
-        return lr * (step + 1) / warmup_steps
+        return (step + 1) / warmup_steps
     else:
         if decay_type == 'cosine':
             progress = (step - warmup_steps) / (total_steps - warmup_steps)
-            lr *= (1 + math.cos(math.pi * progress)) / 2
+            return (1 + math.cos(math.pi * progress)) / 2
         elif decay_type == 'exp' and decay_rate is not None:
-            lr *= decay_rate ** ((step - warmup_steps) / total_steps)
-    return lr
+            return decay_rate ** ((step - warmup_steps) / total_steps)
+    # should not make it here
+    return 1
 
 
 def train(opt):
