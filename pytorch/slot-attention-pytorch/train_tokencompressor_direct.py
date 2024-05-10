@@ -63,6 +63,8 @@ def parse_args():
     parser.add_argument('--ckpt_epoch', default=10, type=int)
     parser.add_argument('--wandb', action='store_true',
                         help='whether to use wandb')
+    parser.add_argument('--plot_recons', action='store_true',
+                        help='whether to plot reconstructions each epoch')
     return parser.parse_args()
 
 
@@ -157,6 +159,23 @@ def train(opt):
 
             if opt.wandb:
                 wandb.log({'loss': total_loss}, step=epoch)
+                if opt.plot_recons:
+                    # log a plot of 10 sample images from the train set and their reconstructions
+                    # Define the number of samples to visualize
+                    first_batch_images = next(iter(image_dataloader))
+                    first_batch_images = first_batch_images['image']
+                    # Assuming that the batch size is at least as large as the number of samples you want to visualize
+                    n = opt.batch_size if opt.batch_size < 10 else 10
+                    sample_images = first_batch_images[:n].to(device)
+                    # Note model.train() is already run before each loop
+                    model.eval()
+                    # Generate reconstructions at each depth
+                    depths_reconstructions = [model.reconstruction_to(
+                        sample_images, depth) for depth in range(model_depth+1)]
+                    plt = plot_samples(sample_images, depths_reconstructions)
+                    wandb.log({"Reconstructions by Depth": wandb.Image(
+                        plt, caption=f"Epoch: {epoch + model_depth*opt.num_epochs}")}, step=epoch + model_depth*opt.num_epochs)
+                    plt.close()
             if epoch % opt.ckpt_epoch:
                 torch.save({
                     'model_state_dict': model.state_dict(),
@@ -186,24 +205,8 @@ def train(opt):
             torch.save({
                 'model_state_dict': model.state_dict(),
             }, opt.results_dir + f"/{model_filename}.ckpt")
-
-            # log a plot of 10 sample images from the train set and their reconstructions
-            # Define the number of samples to visualize
-            first_batch_images = next(iter(image_dataloader))
-            first_batch_images = first_batch_images['image']
-            # Assuming that the batch size is at least as large as the number of samples you want to visualize
-            n = opt.batch_size if opt.batch_size < 10 else 10
-            sample_images = first_batch_images[:n].to(device)
-            # Note model.train() is already run before each loop
-            model.eval()
-            # Generate reconstructions at each depth
-            depths_reconstructions = [model.reconstruction_to(
-                sample_images, depth) for depth in range(model_depth+1)]
-            plt = plot_samples(sample_images, depths_reconstructions)
-            wandb.log({"Reconstructions by Depth": wandb.Image(
-                plt, caption=f"Epoch: {epoch + model_depth*opt.num_epochs}")}, step=epoch + model_depth*opt.num_epochs)
-            plt.close()
             wandb.finish()
+            
 
 
 if __name__ == '__main__':
